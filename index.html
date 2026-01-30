@@ -33,6 +33,33 @@
             <!-- ÁREA DE FILTROS -->
             <div class="flex flex-wrap gap-4 items-center bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                 
+                <!-- Colaborador movido para a frente -->
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Colaborador</label>
+                    <div class="relative">
+                        <select id="filterColaborador" class="pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[200px]">
+                            <option value="">Selecionar Colaborador</option>
+                            <optgroup label="SOLDADURA">
+                                <option value="Abel dos Reis Tavares">Abel dos Reis Tavares</option>
+                                <option value="Ilídio Costa Ferreira">Ilídio Costa Ferreira</option>
+                                <option value="Octávio Ferreira da Silva">Octávio Ferreira da Silva</option>
+                                <option value="Pedro Daniel Domingues Barreira">Pedro Daniel Domingues Barreira</option>
+                            </optgroup>
+                            <optgroup label="PÓS VENDA">
+                                <option value="Alexandre Miguel Silva Nunes das Neves">Alexandre Miguel Silva Nunes das Neves</option>
+                                <option value="Cândido Manuel dos Santos Veloso">Cândido Manuel dos Santos Veloso</option>
+                                <option value="Carina Andreia Rocha Robaina">Carina Andreia Rocha Robaina</option>
+                            </optgroup>
+                            <optgroup label="MONTAGEM">
+                                <option value="Carlos Miguel Tavares Almeida">Carlos Miguel Tavares Almeida</option>
+                                <option value="Diogo Miguel Fernandez Martins">Diogo Miguel Fernandez Martins</option>
+                                <option value="Fábio da Rocha Silva">Fábio da Rocha Silva</option>
+                            </optgroup>
+                        </select>
+                        <i data-lucide="user" class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"></i>
+                    </div>
+                </div>
+
                 <div class="flex flex-col gap-1">
                     <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Ano Base</label>
                     <div class="relative">
@@ -77,32 +104,6 @@
                             <option value="SOLDADURA">SOLDADURA</option>
                         </select>
                         <i data-lucide="chevron-down" class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"></i>
-                    </div>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Colaborador</label>
-                    <div class="relative">
-                        <select id="filterColaborador" class="pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[200px]">
-                            <option value="">Selecionar Colaborador</option>
-                            <optgroup label="SOLDADURA">
-                                <option value="Abel dos Reis Tavares">Abel dos Reis Tavares</option>
-                                <option value="Ilídio Costa Ferreira">Ilídio Costa Ferreira</option>
-                                <option value="Octávio Ferreira da Silva">Octávio Ferreira da Silva</option>
-                                <option value="Pedro Daniel Domingues Barreira">Pedro Daniel Domingues Barreira</option>
-                            </optgroup>
-                            <optgroup label="PÓS VENDA">
-                                <option value="Alexandre Miguel Silva Nunes das Neves">Alexandre Miguel Silva Nunes das Neves</option>
-                                <option value="Cândido Manuel dos Santos Veloso">Cândido Manuel dos Santos Veloso</option>
-                                <option value="Carina Andreia Rocha Robaina">Carina Andreia Rocha Robaina</option>
-                            </optgroup>
-                            <optgroup label="MONTAGEM">
-                                <option value="Carlos Miguel Tavares Almeida">Carlos Miguel Tavares Almeida</option>
-                                <option value="Diogo Miguel Fernandez Martins">Diogo Miguel Fernandez Martins</option>
-                                <option value="Fábio da Rocha Silva">Fábio da Rocha Silva</option>
-                            </optgroup>
-                        </select>
-                        <i data-lucide="user" class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"></i>
                     </div>
                 </div>
 
@@ -528,7 +529,7 @@
                     pont: 95.5, assid: 91.0, faltas: 12, prodActual: 78, prodPrev: 81,
                     ferias: { 
                         gozadasBase: [1, 1, 1, 1, 1, 10, 5, 0, 0, 0, 0, 0], 
-                        gozadasComp: [0, 0, 5, 0, 5, 10, 0, 0, 0, 0, 0, 0],
+                        gozadasComp: [0, 0, 5, 0, 5, 10, 0, 0, 0, 0, 0],
                         total: 22, bonus: 0 
                     },
                     tipologia: [10, 5, 5, 0], just: 10, njust: 2,
@@ -554,7 +555,7 @@
                     pont: 97.2, assid: 93.5, faltas: 7, prodActual: 86, prodPrev: 86,
                     ferias: { 
                         gozadasBase: [0, 0, 10, 0, 0, 0, 10, 2, 0, 0, 0, 0], 
-                        gozadasComp: [0, 0, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0],
+                        gozadasComp: [0, 0, 5, 5, 5, 5, 0, 0, 0, 0, 0],
                         total: 23, bonus: 1 
                     },
                     tipologia: [18, 2, 1, 1], just: 7, njust: 0,
