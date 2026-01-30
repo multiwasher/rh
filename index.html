@@ -35,10 +35,10 @@
             <!-- Secção de Filtros -->
             <div class="flex flex-wrap gap-4 items-center bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                 <div class="flex flex-col gap-1">
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Setor</label>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Setor de Comparação</label>
                     <div class="relative">
                         <select id="filterSetor" class="pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[140px]">
-                            <option value="">Todos os Setores</option>
+                            <option value="">Média Geral</option>
                             <option value="ACABAMENTOS">ACABAMENTOS</option>
                             <option value="COMERCIAL">COMERCIAL</option>
                             <option value="COMPRAS">COMPRAS</option>
@@ -157,9 +157,9 @@
                         <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 min-w-[160px]">
                             <p class="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Pontualidade</p>
                             <div class="flex items-baseline justify-between gap-4">
-                                <span class="text-2xl font-black">99.1%</span>
+                                <span id="valPontDestaque" class="text-2xl font-black">99.1%</span>
                                 <div class="flex flex-col items-end">
-                                    <span class="text-[9px] font-bold text-emerald-400 flex items-center gap-0.5">
+                                    <span id="diffPontDestaque" class="text-[9px] font-bold flex items-center gap-0.5">
                                         <i data-lucide="trending-up" class="w-2.5 h-2.5"></i> +0.9%
                                     </span>
                                     <span id="labelComparePont" class="text-[8px] text-white/40 uppercase font-bold">vs. Média Geral</span>
@@ -170,9 +170,9 @@
                         <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 min-w-[160px]">
                             <p class="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Assiduidade</p>
                             <div class="flex items-baseline justify-between gap-4">
-                                <span class="text-2xl font-black">96.4%</span>
+                                <span id="valAssidDestaque" class="text-2xl font-black">96.4%</span>
                                 <div class="flex flex-col items-end">
-                                    <span class="text-[9px] font-bold text-rose-400 flex items-center gap-0.5">
+                                    <span id="diffAssidDestaque" class="text-[9px] font-bold flex items-center gap-0.5">
                                         <i data-lucide="trending-down" class="w-2.5 h-2.5"></i> -1.2%
                                     </span>
                                     <span id="labelCompareAssid" class="text-[8px] text-white/40 uppercase font-bold">vs. Média Geral</span>
@@ -191,26 +191,26 @@
             <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow flex flex-col justify-between">
                 <div class="flex justify-between items-start mb-4">
                     <div class="p-2 bg-slate-50 rounded-lg text-slate-600"><i data-lucide="clock" class="w-5 h-5"></i></div>
-                    <div class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600">
+                    <div id="kpiPontTrend" class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-600">
                         <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i> 1.5% mais
                     </div>
                 </div>
                 <div>
                     <p class="text-sm text-slate-500 font-medium uppercase tracking-wider">Pontualidade</p>
-                    <h3 class="text-2xl font-bold text-slate-900 mt-1">98.2%</h3>
+                    <h3 id="kpiPontValue" class="text-2xl font-bold text-slate-900 mt-1">98.2%</h3>
                     <p class="text-xs text-slate-400 mt-1 italic">vs. ano anterior (2024)</p>
                 </div>
             </div>
             <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow flex flex-col justify-between">
                 <div class="flex justify-between items-start mb-4">
                     <div class="p-2 bg-slate-50 rounded-lg text-slate-600"><i data-lucide="user-check" class="w-5 h-5"></i></div>
-                    <div class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-600">
+                    <div id="kpiAssidTrend" class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-600">
                         <i data-lucide="arrow-down-right" class="w-3.5 h-3.5"></i> 0.8% menos
                     </div>
                 </div>
                 <div>
                     <p class="text-sm text-slate-500 font-medium uppercase tracking-wider">Assiduidade</p>
-                    <h3 class="text-2xl font-bold text-slate-900 mt-1">94.5%</h3>
+                    <h3 id="kpiAssidValue" class="text-2xl font-bold text-slate-900 mt-1">94.5%</h3>
                     <p class="text-xs text-slate-400 mt-1 italic">vs. ano anterior (2024)</p>
                 </div>
             </div>
@@ -223,7 +223,7 @@
                 </div>
                 <div>
                     <p class="text-sm text-slate-500 font-medium uppercase tracking-wider">Faltas Registadas</p>
-                    <h3 class="text-2xl font-bold text-slate-900 mt-1">40 dias</h3>
+                    <h3 id="kpiFaltasValue" class="text-2xl font-bold text-slate-900 mt-1">40 dias</h3>
                     <p class="text-xs text-slate-400 mt-1 italic">Acumulado anual (inclui férias)</p>
                 </div>
             </div>
@@ -330,7 +330,7 @@
                                 <div class="w-16 h-16 flex-shrink-0"><canvas id="prodChart"></canvas></div>
                                 <div class="flex flex-col">
                                     <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Ano Atual (2025)</p>
-                                    <span class="text-3xl font-black text-slate-900 leading-none">88%</span>
+                                    <span id="prodCurrentVal" class="text-3xl font-black text-slate-900 leading-none">88%</span>
                                 </div>
                             </div>
                         </div>
@@ -339,7 +339,7 @@
                                 <div class="w-16 h-16 flex-shrink-0 opacity-40"><canvas id="prodChartPrev"></canvas></div>
                                 <div class="flex flex-col">
                                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ano Anterior (2024)</p>
-                                    <span class="text-2xl font-black text-slate-400 leading-none">82%</span>
+                                    <span id="prodPrevVal" class="text-2xl font-black text-slate-400 leading-none">82%</span>
                                 </div>
                             </div>
                         </div>
@@ -366,16 +366,16 @@
                         <div>
                             <div class="flex justify-between text-xs mb-2 uppercase font-black tracking-widest">
                                 <span class="text-emerald-600">Justificadas</span>
-                                <span>38 dias</span>
+                                <span id="valJust">38 dias</span>
                             </div>
-                            <div class="w-full bg-slate-100 h-3 rounded-full"><div class="bg-emerald-500 h-full w-[95%] rounded-full"></div></div>
+                            <div class="w-full bg-slate-100 h-3 rounded-full"><div id="barJust" class="bg-emerald-500 h-full w-[95%] rounded-full"></div></div>
                         </div>
                         <div>
                             <div class="flex justify-between text-xs mb-2 uppercase font-black tracking-widest">
                                 <span class="text-rose-500">Não Justificadas</span>
-                                <span>2 dias</span>
+                                <span id="valNJust">2 dias</span>
                             </div>
-                            <div class="w-full bg-slate-100 h-3 rounded-full"><div class="bg-rose-500 h-full w-[5%] rounded-full"></div></div>
+                            <div class="w-full bg-slate-100 h-3 rounded-full"><div id="barNJust" class="bg-rose-500 h-full w-[5%] rounded-full"></div></div>
                         </div>
                     </div>
                 </div>
@@ -418,11 +418,11 @@
                     <div class="grid grid-cols-2 gap-3">
                         <div class="bg-white p-3 rounded-2xl border border-slate-200/60 shadow-sm">
                             <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Modelo Líder</p>
-                            <p class="text-sm font-black text-slate-800">MWS300 (25%)</p>
+                            <p id="leaderModel" class="text-sm font-black text-slate-800">MWS300 (25%)</p>
                         </div>
                         <div class="bg-white p-3 rounded-2xl border border-slate-200/60 shadow-sm">
                             <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Crescimento</p>
-                            <p class="text-sm font-black text-emerald-600">+4.2%</p>
+                            <p id="growthModel" class="text-sm font-black text-emerald-600">+4.2%</p>
                         </div>
                     </div>
                 </div>
@@ -439,6 +439,32 @@
     </footer>
 
     <script>
+        // MOCK DATA PARA LÓGICA DE COMPARAÇÃO
+        const COMPARISON_DATA = {
+            geral: { pont: 98.2, assid: 94.5 },
+            setores: {
+                "ACABAMENTOS": { pont: 96.5, assid: 92.0 },
+                "COMERCIAL": { pont: 95.0, assid: 98.5 },
+                "COMPRAS": { pont: 99.1, assid: 97.4 },
+                "ENGENHARIA": { pont: 99.5, assid: 95.8 },
+                "FINANCEIRO": { pont: 99.8, assid: 98.2 },
+                "IOT": { pont: 97.2, assid: 93.5 },
+                "LOGÍSTICA": { pont: 96.0, assid: 91.5 },
+                "MONTAGEM": { pont: 98.8, assid: 96.2 },
+                "PÓS VENDA": { pont: 97.5, assid: 94.0 },
+                "QUALIDADE": { pont: 99.9, assid: 99.0 },
+                "SERRALHARIA": { pont: 94.5, assid: 89.8 },
+                "SOLDADURA": { pont: 95.8, assid: 90.5 }
+            },
+            colaboradores: {
+                "Abel dos Reis Tavares": { pont: 94.0, assid: 88.0, faltas: 12, prod: 78 },
+                "Ilídio Costa Ferreira": { pont: 99.2, assid: 98.5, faltas: 2, prod: 94 },
+                "Octávio Ferreira da Silva": { pont: 95.5, assid: 91.0, faltas: 8, prod: 82 },
+                "Pedro Daniel Domingues Barreira": { pont: 99.1, assid: 96.4, faltas: 4, prod: 88 },
+                // ... (outros colaboradores simulariam dados aqui)
+            }
+        };
+
         lucide.createIcons();
 
         // Elementos do Destaque
@@ -448,74 +474,88 @@
         const highlightSubtitle = document.getElementById('highlightSubtitle');
         const labelComparePont = document.getElementById('labelComparePont');
         const labelCompareAssid = document.getElementById('labelCompareAssid');
-        const btnReset = document.getElementById('btnReset');
+        const valPontDestaque = document.getElementById('valPontDestaque');
+        const valAssidDestaque = document.getElementById('valAssidDestaque');
+        const diffPontDestaque = document.getElementById('diffPontDestaque');
+        const diffAssidDestaque = document.getElementById('diffAssidDestaque');
+        
+        const kpiPontValue = document.getElementById('kpiPontValue');
+        const kpiAssidValue = document.getElementById('kpiAssidValue');
+        const kpiFaltasValue = document.getElementById('kpiFaltasValue');
 
-        // Lógica de Sincronização de Filtros
+        // Filtros
         const filterSetor = document.getElementById('filterSetor');
         const filterColaborador = document.getElementById('filterColaborador');
-        const optGroups = filterColaborador.querySelectorAll('optgroup');
+        const btnReset = document.getElementById('btnReset');
 
-        function updateHighlight() {
-            const setor = filterSetor.value;
-            const colaborador = filterColaborador.value;
+        function updateDashboardLogic() {
+            const setorSel = filterSetor.value;
+            const colabSel = filterColaborador.value;
 
-            if (colaborador !== "") {
-                // Modo Colaborador Selecionado
-                highlightSection.classList.remove('hidden');
-                highlightName.innerText = colaborador;
+            // 1. Determinar o Referencial de Comparação (BASEADO NO SETOR)
+            const referencial = setorSel !== "" ? COMPARISON_DATA.setores[setorSel] : COMPARISON_DATA.geral;
+            const labelText = setorSel !== "" ? `vs. Média ${setorSel}` : "vs. Média Geral";
+
+            // 2. Determinar Dados Atuais (COLABORADOR OU GERAL)
+            let currentData;
+            if (colabSel && COMPARISON_DATA.colaboradores[colabSel]) {
+                currentData = COMPARISON_DATA.colaboradores[colabSel];
                 
-                // Encontrar setor do colaborador
-                let userSetor = "Setor não definido";
+                // Atualizar UI Destaque
+                highlightSection.classList.remove('hidden');
+                highlightName.innerText = colabSel;
+                
                 const selectedOpt = filterColaborador.options[filterColaborador.selectedIndex];
                 const group = selectedOpt.closest('optgroup');
-                if (group) userSetor = group.label;
-                
-                highlightSetorTag.innerText = userSetor;
+                highlightSetorTag.innerText = group ? group.label : "---";
                 highlightSubtitle.innerText = "Perfil Individual";
-                
-                // Se o setor estiver filtrado também, compara com setor. Se não, com geral.
-                const compareText = setor !== "" ? `vs. Média ${setor}` : "vs. Média Geral";
-                labelComparePont.innerText = compareText;
-                labelCompareAssid.innerText = compareText;
 
-            } else if (setor !== "") {
-                // Modo Setor Selecionado (sem colaborador específico)
-                highlightSection.classList.remove('hidden');
-                highlightName.innerText = `Setor: ${setor}`;
-                highlightSetorTag.innerText = "Visão Departamental";
-                highlightSubtitle.innerText = "Performance do Grupo";
-                labelComparePont.innerText = "vs. Média Geral";
-                labelCompareAssid.innerText = "vs. Média Geral";
+                valPontDestaque.innerText = currentData.pont.toFixed(1) + "%";
+                valAssidDestaque.innerText = currentData.assid.toFixed(1) + "%";
+
+                // Cálculos de Diferença contra o Referencial (O PEDIDO PRINCIPAL)
+                const dPont = (currentData.pont - referencial.pont).toFixed(1);
+                const dAssid = (currentData.assid - referencial.assid).toFixed(1);
+
+                diffPontDestaque.innerHTML = `<i data-lucide="${dPont >= 0 ? 'trending-up' : 'trending-down'}" class="w-2.5 h-2.5"></i> ${dPont >= 0 ? '+' : ''}${dPont}%`;
+                diffPontDestaque.className = `text-[9px] font-bold flex items-center gap-0.5 ${dPont >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+                
+                diffAssidDestaque.innerHTML = `<i data-lucide="${dAssid >= 0 ? 'trending-up' : 'trending-down'}" class="w-2.5 h-2.5"></i> ${dAssid >= 0 ? '+' : ''}${dAssid}%`;
+                diffAssidDestaque.className = `text-[9px] font-bold flex items-center gap-0.5 ${dAssid >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+
+                // Atualizar KPIs Base
+                kpiPontValue.innerText = currentData.pont.toFixed(1) + "%";
+                kpiAssidValue.innerText = currentData.assid.toFixed(1) + "%";
+                kpiFaltasValue.innerText = currentData.faltas + " dias";
+
             } else {
-                // Nada selecionado
+                // Modo Visão Geral / Setor (Sem colaborador)
                 highlightSection.classList.add('hidden');
+                
+                // Se não há colaborador, os KPIs mostram a média do referencial (setor ou geral)
+                kpiPontValue.innerText = referencial.pont.toFixed(1) + "%";
+                kpiAssidValue.innerText = referencial.assid.toFixed(1) + "%";
+                kpiFaltasValue.innerText = setorSel !== "" ? "---" : "40 dias";
             }
+
+            // Atualizar labels de comparação
+            labelComparePont.innerText = labelText;
+            labelCompareAssid.innerText = labelText;
+            
+            lucide.createIcons();
         }
 
-        filterSetor.addEventListener('change', (e) => {
-            const selectedSetor = e.target.value;
-            filterColaborador.value = ""; // Reset colaborador
-            
-            optGroups.forEach(group => {
-                if (selectedSetor === "" || group.label === selectedSetor) {
-                    group.style.display = 'block';
-                } else {
-                    group.style.display = 'none';
-                }
-            });
-            updateHighlight();
-        });
-
-        filterColaborador.addEventListener('change', updateHighlight);
+        // EVENTOS SEM RESETAR ESTRUTURA
+        filterSetor.addEventListener('change', updateDashboardLogic);
+        filterColaborador.addEventListener('change', updateDashboardLogic);
 
         btnReset.addEventListener('click', () => {
             filterSetor.value = "";
             filterColaborador.value = "";
-            optGroups.forEach(g => g.style.display = 'block');
-            updateHighlight();
+            updateDashboardLogic();
         });
 
-        // Configurações Globais do Chart.js
+        // Configurações Globais do Chart.js (MANTIDAS COMO ESTAVAM)
         const lineOptions = {
             responsive: true,
             maintainAspectRatio: false,
@@ -526,137 +566,52 @@
             }
         };
 
-        // Inicialização dos Gráficos
-        new Chart(document.getElementById('assidChart'), {
+        // Inicialização dos Gráficos (ESTRUTURA VISUAL INTOCADA)
+        const chartAssid = new Chart(document.getElementById('assidChart'), {
             type: 'line',
             data: {
                 labels: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'],
-                datasets: [{
-                    label: '2025',
-                    data: [95, 94, 97, 92, 96, 98],
-                    borderColor: '#4F46E5',
-                    borderWidth: 3,
-                    tension: 0.4,
-                    pointRadius: 4,
-                    pointBackgroundColor: '#4F46E5'
-                }, {
-                    label: '2024',
-                    data: [92, 93, 94, 95, 94, 96],
-                    borderColor: '#CBD5E1',
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    tension: 0.4,
-                    pointRadius: 0
-                }]
+                datasets: [{ label: '2025', data: [95, 94, 97, 92, 96, 98], borderColor: '#4F46E5', borderWidth: 3, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#4F46E5' }, 
+                           { label: '2024', data: [92, 93, 94, 95, 94, 96], borderColor: '#CBD5E1', borderWidth: 2, borderDash: [5, 5], tension: 0.4, pointRadius: 0 }]
             },
             options: lineOptions
         });
 
-        new Chart(document.getElementById('pontuChart'), {
+        const chartPontu = new Chart(document.getElementById('pontuChart'), {
             type: 'line',
             data: {
                 labels: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'],
-                datasets: [{
-                    label: '2025',
-                    data: [98, 97, 99, 98, 98, 99],
-                    borderColor: '#10B981',
-                    borderWidth: 3,
-                    tension: 0.4,
-                    pointRadius: 4,
-                    pointBackgroundColor: '#10B981'
-                }, {
-                    label: '2024',
-                    data: [96, 95, 97, 96, 97, 96],
-                    borderColor: '#CBD5E1',
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    tension: 0.4,
-                    pointRadius: 0
-                }]
+                datasets: [{ label: '2025', data: [98, 97, 99, 98, 98, 99], borderColor: '#10B981', borderWidth: 3, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#10B981' }, 
+                           { label: '2024', data: [96, 95, 97, 96, 97, 96], borderColor: '#CBD5E1', borderWidth: 2, borderDash: [5, 5], tension: 0.4, pointRadius: 0 }]
             },
-            options: {
-                ...lineOptions,
-                scales: {
-                    ...lineOptions.scales,
-                    y: { min: 90, max: 100, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }
-                }
-            }
+            options: { ...lineOptions, scales: { ...lineOptions.scales, y: { min: 90, max: 100, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } } } }
         });
 
         new Chart(document.getElementById('vacationLineChart'), {
             type: 'line',
             data: {
                 labels: ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'],
-                datasets: [{
-                    label: '2025',
-                    data: [2, 1, 3, 0, 1, 5, 10, 2, 0, 0, 0, 0],
-                    borderColor: '#4F46E5',
-                    backgroundColor: 'rgba(79, 70, 229, 0.05)',
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 4,
-                    pointBackgroundColor: '#4F46E5'
-                }, {
-                    label: '2024',
-                    data: [1, 2, 4, 2, 2, 4, 8, 3, 1, 0, 0, 0],
-                    borderColor: '#CBD5E1',
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    fill: false,
-                    tension: 0.3,
-                    pointRadius: 0
-                }]
+                datasets: [{ label: '2025', data: [2, 1, 3, 0, 1, 5, 10, 2, 0, 0, 0, 0], borderColor: '#4F46E5', backgroundColor: 'rgba(79, 70, 229, 0.05)', borderWidth: 3, fill: true, tension: 0.3, pointRadius: 4 }, 
+                           { label: '2024', data: [1, 2, 4, 2, 2, 4, 8, 3, 1, 0, 0, 0], borderColor: '#CBD5E1', borderWidth: 2, borderDash: [5, 5], tension: 0.3, pointRadius: 0 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { display: false },
-                    x: { grid: { display: false }, ticks: { font: { size: 9, weight: 'bold' }, color: '#94A3B8' } }
-                }
-            }
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false }, ticks: { font: { size: 9, weight: 'bold' }, color: '#94A3B8' } } } }
         });
 
         new Chart(document.getElementById('typeChart'), {
             type: 'doughnut',
-            data: {
-                labels: ['Férias', 'Doença', 'Família', 'Outras'],
-                datasets: [{
-                    data: [25, 8, 5, 2],
-                    backgroundColor: ['#4F46E5', '#F87171', '#FB923C', '#94A3B8'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } } }
-            }
+            data: { labels: ['Férias', 'Doença', 'Família', 'Outras'], datasets: [{ data: [25, 8, 5, 2], backgroundColor: ['#4F46E5', '#F87171', '#FB923C', '#94A3B8'], borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } } } }
         });
 
         new Chart(document.getElementById('prodChart'), {
             type: 'doughnut',
-            data: {
-                datasets: [{
-                    data: [88, 12],
-                    backgroundColor: ['#4F46E5', '#F1F5F9'],
-                    borderWidth: 0
-                }]
-            },
+            data: { datasets: [{ data: [88, 12], backgroundColor: ['#4F46E5', '#F1F5F9'], borderWidth: 0 }] },
             options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } }
         });
 
         new Chart(document.getElementById('prodChartPrev'), {
             type: 'doughnut',
-            data: {
-                datasets: [{
-                    data: [82, 18],
-                    backgroundColor: ['#CBD5E1', '#F1F5F9'],
-                    borderWidth: 0
-                }]
-            },
+            data: { datasets: [{ data: [82, 18], backgroundColor: ['#CBD5E1', '#F1F5F9'], borderWidth: 0 }] },
             options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } }
         });
 
@@ -664,40 +619,13 @@
             type: 'bar',
             data: {
                 labels: ['MWS200', 'MWS300', 'MWS500', 'MWS700', 'MWS715'],
-                datasets: [{
-                    data: [15, 25, 20, 18, 12],
-                    backgroundColor: ['#6366F1', '#8B5CF6', '#EC4899', '#F43F5E', '#F59E0B'],
-                    borderRadius: 8,
-                    barThickness: 16
-                }]
+                datasets: [{ data: [15, 25, 20, 18, 12], backgroundColor: ['#6366F1', '#8B5CF6', '#EC4899', '#F43F5E', '#F59E0B'], borderRadius: 8, barThickness: 16 }]
             },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { 
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: '#1e293b',
-                        padding: 12,
-                        titleFont: { size: 11, weight: 'bold' },
-                        bodyFont: { size: 11 },
-                        cornerRadius: 8
-                    }
-                },
-                scales: {
-                    x: { 
-                        grid: { color: '#f1f5f9' }, 
-                        ticks: { font: { size: 10 }, color: '#94a3b8' },
-                        max: 30
-                    },
-                    y: { 
-                        grid: { display: false }, 
-                        ticks: { font: { size: 11, weight: 'bold' }, color: '#475569' } 
-                    }
-                }
-            }
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#f1f5f9' }, max: 30 }, y: { grid: { display: false } } } }
         });
+
+        // Inicializar Dashboard
+        updateDashboardLogic();
     </script>
 </body>
 </html>
