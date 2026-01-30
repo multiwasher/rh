@@ -14,26 +14,173 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
         .chart-container { position: relative; width: 100%; height: 200px; }
-        .model-chart-container { position: relative; width: 100%; height: 180px; }
-        .vacation-chart-container { position: relative; width: 100%; height: 140px; }
+        .model-chart-container { position: relative; width: 100%; height: 200px; }
+        .vacation-chart-container { position: relative; width: 100%; height: 160px; }
         .card-shadow { box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+        select { appearance: none; -webkit-appearance: none; }
+        
+        /* Animação para a nova secção */
+        #selectionHighlight { transition: all 0.3s ease-in-out; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen p-4 md:p-8">
 
     <header class="max-w-7xl mx-auto mb-8">
-        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div class="flex flex-col md:flex-row md:items-start justify-between gap-6">
             <div>
                 <h1 class="text-3xl font-bold tracking-tight text-slate-900 uppercase">Feedback de Colaboradores</h1>
                 <p class="text-slate-500 mt-1">Análise de Performance e Assiduidade • Dados atualizados a 30 de Janeiro</p>
             </div>
-            <div class="flex flex-wrap gap-3">
-                <button class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
-                    Exportar PDF
-                </button>
-                <button class="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
-                    <i data-lucide="filter" class="w-4 h-4"></i> Filtros Avançados
-                </button>
+            
+            <!-- Secção de Filtros -->
+            <div class="flex flex-wrap gap-4 items-center bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Setor</label>
+                    <div class="relative">
+                        <select id="filterSetor" class="pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[140px]">
+                            <option value="">Todos os Setores</option>
+                            <option value="ACABAMENTOS">ACABAMENTOS</option>
+                            <option value="COMERCIAL">COMERCIAL</option>
+                            <option value="COMPRAS">COMPRAS</option>
+                            <option value="ENGENHARIA">ENGENHARIA</option>
+                            <option value="FINANCEIRO">FINANCEIRO</option>
+                            <option value="IOT">IOT</option>
+                            <option value="LOGÍSTICA">LOGÍSTICA</option>
+                            <option value="MONTAGEM">MONTAGEM</option>
+                            <option value="PÓS VENDA">PÓS VENDA</option>
+                            <option value="QUALIDADE">QUALIDADE</option>
+                            <option value="SERRALHARIA">SERRALHARIA</option>
+                            <option value="SOLDADURA">SOLDADURA</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Colaborador</label>
+                    <div class="relative">
+                        <select id="filterColaborador" class="pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[200px]">
+                            <option value="">Selecionar Colaborador</option>
+                            <optgroup label="SOLDADURA">
+                                <option value="Abel dos Reis Tavares">Abel dos Reis Tavares</option>
+                                <option value="Ilídio Costa Ferreira">Ilídio Costa Ferreira</option>
+                                <option value="Octávio Ferreira da Silva">Octávio Ferreira da Silva</option>
+                                <option value="Pedro Daniel Domingues Barreira">Pedro Daniel Domingues Barreira</option>
+                            </optgroup>
+                            <optgroup label="PÓS VENDA">
+                                <option value="Alexandre Miguel Silva Nunes das Neves">Alexandre Miguel Silva Nunes das Neves</option>
+                                <option value="Cândido Manuel dos Santos Veloso">Cândido Manuel dos Santos Veloso</option>
+                                <option value="Carina Andreia Rocha Robaina">Carina Andreia Rocha Robaina</option>
+                            </optgroup>
+                            <optgroup label="MONTAGEM">
+                                <option value="Carlos Miguel Tavares Almeida">Carlos Miguel Tavares Almeida</option>
+                                <option value="Diogo Miguel Fernandez Martins">Diogo Miguel Fernandez Martins</option>
+                                <option value="Fábio da Rocha Silva">Fábio da Rocha Silva</option>
+                                <option value="Luís Leonel Nogueira Pereira">Luís Leonel Nogueira Pereira</option>
+                                <option value="Miguel Pinho Marques Moura">Miguel Pinho Marques Moura</option>
+                                <option value="Ricardo Gonçalves Carvalhais">Ricardo Gonçalves Carvalhais</option>
+                                <option value="Tiago Emanuel Lisboa Dias">Tiago Emanuel Lisboa Dias</option>
+                            </optgroup>
+                            <optgroup label="COMERCIAL">
+                                <option value="David José Nunes Borges">David José Nunes Borges</option>
+                                <option value="Davide Sturla">Davide Sturla</option>
+                                <option value="Diogo Paulo Gonçalves Marques Brito de Sousa">Diogo Paulo Gonçalves Marques Brito de Sousa</option>
+                                <option value="João Maria Bernardo da Cunha Pinto">João Maria Bernardo da Cunha Pinto</option>
+                                <option value="Manuel Diniz Cruz do Marco">Manuel Diniz Cruz do Marco</option>
+                                <option value="Miguel André Ferreira Pacheco Quental">Miguel André Ferreira Pacheco Quental</option>
+                                <option value="Renato Pires Gomes">Renato Pires Gomes</option>
+                                <option value="Simão Jorge Ventura">Simão Jorge Ventura</option>
+                            </optgroup>
+                            <optgroup label="ENGENHARIA">
+                                <option value="Jonathan de Figueiredo Santos">Jonathan de Figueiredo Santos</option>
+                                <option value="Joni André Costa Regalado">Joni André Costa Regalado</option>
+                                <option value="Miguel do Marco Marta">Miguel do Marco Marta</option>
+                                <option value="Ricardo Nunes Hipólito">Ricardo Nunes Hipólito</option>
+                            </optgroup>
+                            <optgroup label="LOGÍSTICA">
+                                <option value="Carlos Manuel Santos Tarenta">Carlos Manuel Santos Tarenta</option>
+                                <option value="José Gabriel Simões Ferreira">José Gabriel Simões Ferreira</option>
+                            </optgroup>
+                            <optgroup label="FINANCEIRO">
+                                <option value="Lúcio Mota">Lúcio Mota</option>
+                            </optgroup>
+                            <optgroup label="SERRALHARIA">
+                                <option value="Manuel Ferreira Martins">Manuel Ferreira Martins</option>
+                            </optgroup>
+                            <optgroup label="QUALIDADE">
+                                <option value="Mário Jorge Marques Peixinho Fragoso">Mário Jorge Marques Peixinho Fragoso</option>
+                            </optgroup>
+                            <optgroup label="COMPRAS">
+                                <option value="Paulo Brioso">Paulo Brioso</option>
+                            </optgroup>
+                            <optgroup label="ACABAMENTOS">
+                                <option value="Rui Filipe da Silva Jorge">Rui Filipe da Silva Jorge</option>
+                            </optgroup>
+                            <optgroup label="IOT">
+                                <option value="Samuel Gomes Póvoa">Samuel Gomes Póvoa</option>
+                            </optgroup>
+                        </select>
+                        <i data-lucide="user" class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <div class="flex gap-2 self-end">
+                    <button id="btnReset" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors shadow-sm" title="Limpar Filtros">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    </button>
+                    <button class="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm uppercase">
+                        Aplicar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- NOVO: CABEÇALHO DE DESTAQUE APÓS SELEÇÃO -->
+        <div id="selectionHighlight" class="max-w-7xl mx-auto mb-8 hidden">
+            <div class="bg-gradient-to-r from-indigo-700 to-indigo-900 rounded-[2rem] p-6 md:p-8 text-white shadow-2xl shadow-indigo-200">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div class="flex items-center gap-6">
+                        <div class="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20">
+                            <i data-lucide="user" id="highlightIcon" class="w-10 h-10 text-indigo-200"></i>
+                        </div>
+                        <div>
+                            <span id="highlightSubtitle" class="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em] mb-1 block">Perfil em Análise</span>
+                            <h2 id="highlightName" class="text-3xl font-black uppercase tracking-tight">NOME DO COLABORADOR</h2>
+                            <div class="flex items-center gap-2 mt-2">
+                                <span id="highlightSetorTag" class="px-2 py-0.5 bg-indigo-500/30 border border-indigo-400/30 rounded text-[10px] font-bold uppercase tracking-wider">SETOR</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 w-full md:w-auto">
+                        <!-- Comparação Pontualidade -->
+                        <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 min-w-[160px]">
+                            <p class="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Pontualidade</p>
+                            <div class="flex items-baseline justify-between gap-4">
+                                <span class="text-2xl font-black">99.1%</span>
+                                <div class="flex flex-col items-end">
+                                    <span class="text-[9px] font-bold text-emerald-400 flex items-center gap-0.5">
+                                        <i data-lucide="trending-up" class="w-2.5 h-2.5"></i> +0.9%
+                                    </span>
+                                    <span id="labelComparePont" class="text-[8px] text-white/40 uppercase font-bold">vs. Média Geral</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Comparação Assiduidade -->
+                        <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 min-w-[160px]">
+                            <p class="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Assiduidade</p>
+                            <div class="flex items-baseline justify-between gap-4">
+                                <span class="text-2xl font-black">96.4%</span>
+                                <div class="flex flex-col items-end">
+                                    <span class="text-[9px] font-bold text-rose-400 flex items-center gap-0.5">
+                                        <i data-lucide="trending-down" class="w-2.5 h-2.5"></i> -1.2%
+                                    </span>
+                                    <span id="labelCompareAssid" class="text-[8px] text-white/40 uppercase font-bold">vs. Média Geral</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </header>
@@ -82,184 +229,171 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 space-y-6">
-                <!-- Gráficos de Tendência (Ocupando linhas inteiras) -->
-                
-                <!-- Gráfico de Assiduidade (Linha Inteira) -->
-                <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow w-full">
-                    <div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="user-check" class="w-5 h-5 text-indigo-600"></i>
-                            <h3 class="text-sm font-bold text-slate-800 tracking-tight uppercase">Assiduidade (%)</h3>
-                        </div>
-                        <div class="flex gap-3">
-                            <span class="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase"><span class="w-2 h-0.5 bg-slate-300 border-t border-dashed"></span> 2024</span>
-                            <span class="flex items-center gap-1 text-[9px] font-bold text-indigo-600 uppercase"><span class="w-2 h-0.5 bg-indigo-600"></span> 2025</span>
-                        </div>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="assidChart"></canvas>
-                    </div>
+        <!-- 1. LINHA INTEIRA: ASSIDUIDADE -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow w-full">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="user-check" class="w-5 h-5 text-indigo-600"></i>
+                    <h3 class="text-sm font-bold text-slate-800 tracking-tight uppercase">Assiduidade (%)</h3>
                 </div>
-
-                <!-- Gráfico de Pontualidade (Linha Inteira) -->
-                <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow w-full">
-                    <div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="clock" class="w-5 h-5 text-emerald-600"></i>
-                            <h3 class="text-sm font-bold text-slate-800 tracking-tight uppercase">Pontualidade (%)</h3>
-                        </div>
-                        <div class="flex gap-3">
-                            <span class="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase"><span class="w-2 h-0.5 bg-slate-300 border-t border-dashed"></span> 2024</span>
-                            <span class="flex items-center gap-1 text-[9px] font-bold text-emerald-600 uppercase"><span class="w-2 h-0.5 bg-emerald-600"></span> 2025</span>
-                        </div>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="pontuChart"></canvas>
-                    </div>
+                <div class="flex gap-3">
+                    <span class="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase"><span class="w-2 h-0.5 bg-slate-300 border-t border-dashed"></span> 2024</span>
+                    <span class="flex items-center gap-1 text-[9px] font-bold text-indigo-600 uppercase"><span class="w-2 h-0.5 bg-indigo-600"></span> 2025</span>
                 </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="assidChart"></canvas>
+            </div>
+        </div>
 
-                <!-- Produção & Contribuição (Agora ocupando Linha Inteira na coluna principal) -->
-                <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 card-shadow w-full">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                        
-                        <!-- Coluna 1: Título e Info -->
-                        <div class="flex flex-col space-y-4">
-                            <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-black uppercase tracking-widest self-start">
-                                <i data-lucide="package" class="w-3.5 h-3.5"></i> Performance Industrial
-                            </div>
-                            <div>
-                                <h3 class="text-3xl font-black text-slate-900 uppercase leading-none">Produção &<br/>Contribuição</h3>
-                                <p class="text-[10px] text-slate-400 font-bold uppercase mt-4 italic leading-relaxed">
-                                    Análise comparativa da eficiência de produção<br>por período anual consolidado.
-                                </p>
-                            </div>
+        <!-- 2. LINHA INTEIRA: PONTUALIDADE -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow w-full">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="clock" class="w-5 h-5 text-emerald-600"></i>
+                    <h3 class="text-sm font-bold text-slate-800 tracking-tight uppercase">Pontualidade (%)</h3>
+                </div>
+                <div class="flex gap-3">
+                    <span class="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase"><span class="w-2 h-0.5 bg-slate-300 border-t border-dashed"></span> 2024</span>
+                    <span class="flex items-center gap-1 text-[9px] font-bold text-emerald-600 uppercase"><span class="w-2 h-0.5 bg-emerald-600"></span> 2025</span>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="pontuChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 3. LINHA INTEIRA: GESTÃO DE FÉRIAS -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-100 card-shadow ring-4 ring-slate-50 w-full">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+                <!-- Info e Plafond -->
+                <div class="space-y-4">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-100">
+                            <i data-lucide="calendar" class="w-5 h-5"></i>
                         </div>
-
-                        <!-- Coluna 2: Dados 2025 e 2024 em linhas -->
-                        <div class="flex flex-col gap-4">
-                            <!-- Linha 2025 -->
-                            <div class="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex items-center justify-between">
-                                <div class="flex items-center gap-4">
-                                    <div class="w-16 h-16 flex-shrink-0">
-                                        <canvas id="prodChart"></canvas>
-                                    </div>
-                                    <div class="flex flex-col">
-                                        <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Ano Atual (2025)</p>
-                                        <span class="text-3xl font-black text-slate-900 leading-none">88%</span>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <span class="px-2 py-1 bg-emerald-100 text-emerald-600 text-[9px] font-black rounded-lg uppercase">Meta Superada</span>
-                                </div>
-                            </div>
-                            
-                            <!-- Linha 2024 -->
-                            <div class="bg-slate-50/50 p-5 rounded-3xl border border-slate-100 flex items-center justify-between">
-                                <div class="flex items-center gap-4">
-                                    <div class="w-16 h-16 flex-shrink-0 opacity-40">
-                                        <canvas id="prodChartPrev"></canvas>
-                                    </div>
-                                    <div class="flex flex-col">
-                                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ano Anterior (2024)</p>
-                                        <span class="text-2xl font-black text-slate-400 leading-none">82%</span>
-                                    </div>
-                                </div>
-                                <div class="text-right italic">
-                                    <span class="text-[9px] text-slate-400 font-bold uppercase">Finalizado</span>
-                                </div>
-                            </div>
+                        <h3 class="text-lg font-bold text-slate-900 uppercase">Gestão de Férias</h3>
+                    </div>
+                    <div class="bg-slate-900 rounded-2xl p-4 text-white">
+                        <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-1">Total Disponível 2025</p>
+                        <div class="flex items-baseline gap-2">
+                            <span class="text-3xl font-black">25</span>
+                            <span class="text-[10px] text-indigo-400 font-bold uppercase italic">Dias</span>
                         </div>
                     </div>
                 </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Ausências -->
-                    <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow">
-                        <div class="flex items-center gap-2 mb-4">
-                            <i data-lucide="pie-chart" class="w-5 h-5 text-indigo-600"></i>
-                            <h3 class="text-lg font-bold text-slate-800 uppercase">Tipologia</h3>
-                        </div>
-                        <div class="h-40">
-                            <canvas id="typeChart"></canvas>
+                <!-- Gráfico Mensal -->
+                <div class="md:col-span-2">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-[10px] text-slate-400 uppercase font-black tracking-widest">Dias Gozados (Mensal)</p>
+                        <div class="flex gap-2">
+                            <span class="flex items-center gap-1 text-[8px] font-bold text-slate-400 uppercase"><span class="w-2 h-0.5 bg-slate-300 border-t border-dashed"></span> 2024</span>
+                            <span class="flex items-center gap-1 text-[8px] font-bold text-indigo-600 uppercase"><span class="w-2 h-0.5 bg-indigo-600"></span> 2025</span>
                         </div>
                     </div>
-                    <!-- Justificação -->
-                    <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow">
-                        <div class="flex items-center gap-2 mb-6">
-                            <i data-lucide="shield-check" class="w-5 h-5 text-indigo-600"></i>
-                            <h3 class="text-lg font-bold text-slate-800 uppercase">Justificação</h3>
+                    <div class="vacation-chart-container">
+                        <canvas id="vacationLineChart"></canvas>
+                    </div>
+                </div>
+                <!-- Status e Barra -->
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between mb-1"><span class="text-[9px] uppercase font-black text-slate-400">Consumido</span><span class="text-[10px] font-black">72%</span></div>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div class="bg-indigo-600 h-full w-[72%]"></div></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-50 rounded-xl p-2 text-center border border-slate-100"><p class="text-[8px] text-slate-400 uppercase font-bold">A Agendar</p><p class="text-lg font-black text-slate-900">07</p></div>
+                        <div class="bg-indigo-50 rounded-xl p-2 text-center border border-indigo-100"><p class="text-[8px] text-indigo-400 uppercase font-bold">Majoração</p><p class="text-lg font-black text-indigo-600">+03</p></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Produção & Contribuição -->
+            <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 card-shadow w-full">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    <div class="flex flex-col space-y-4">
+                        <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-black uppercase tracking-widest self-start">
+                            <i data-lucide="package" class="w-3.5 h-3.5"></i> Performance Industrial
                         </div>
-                        <div class="space-y-6">
-                            <div>
-                                <div class="flex justify-between text-xs mb-2 uppercase font-black tracking-widest">
-                                    <span class="text-emerald-600">Justificadas</span>
-                                    <span>38 dias</span>
+                        <div>
+                            <h3 class="text-3xl font-black text-slate-900 uppercase leading-none">Produção &<br/>Contribuição</h3>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-4 leading-relaxed max-w-[200px]">
+                                Análise comparativa da eficiência de produção por período anual consolidado.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-4">
+                        <div class="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="w-16 h-16 flex-shrink-0"><canvas id="prodChart"></canvas></div>
+                                <div class="flex flex-col">
+                                    <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Ano Atual (2025)</p>
+                                    <span class="text-3xl font-black text-slate-900 leading-none">88%</span>
                                 </div>
-                                <div class="w-full bg-slate-100 h-3 rounded-full"><div class="bg-emerald-500 h-full w-[95%] rounded-full"></div></div>
                             </div>
-                            <div>
-                                <div class="flex justify-between text-xs mb-2 uppercase font-black tracking-widest">
-                                    <span class="text-rose-500">Não Justificadas</span>
-                                    <span>2 dias</span>
+                        </div>
+                        <div class="bg-slate-50/50 p-5 rounded-3xl border border-slate-100 flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="w-16 h-16 flex-shrink-0 opacity-40"><canvas id="prodChartPrev"></canvas></div>
+                                <div class="flex flex-col">
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ano Anterior (2024)</p>
+                                    <span class="text-2xl font-black text-slate-400 leading-none">82%</span>
                                 </div>
-                                <div class="w-full bg-slate-100 h-3 rounded-full"><div class="bg-rose-500 h-full w-[5%] rounded-full"></div></div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Coluna Direita (Férias e Modelos) -->
-            <div class="space-y-6">
-                <!-- FÉRIAS -->
-                <div class="bg-white p-6 rounded-3xl border border-slate-100 card-shadow ring-4 ring-slate-50 flex flex-col">
-                    <div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center gap-3">
-                            <div class="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-100">
-                                <i data-lucide="calendar" class="w-5 h-5"></i>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i data-lucide="pie-chart" class="w-5 h-5 text-indigo-600"></i>
+                        <h3 class="text-lg font-bold text-slate-800 uppercase">Tipologia</h3>
+                    </div>
+                    <div class="h-40">
+                        <canvas id="typeChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-slate-100 card-shadow">
+                    <div class="flex items-center gap-2 mb-6">
+                        <i data-lucide="shield-check" class="w-5 h-5 text-indigo-600"></i>
+                        <h3 class="text-lg font-bold text-slate-800 uppercase">Justificação</h3>
+                    </div>
+                    <div class="space-y-6">
+                        <div>
+                            <div class="flex justify-between text-xs mb-2 uppercase font-black tracking-widest">
+                                <span class="text-emerald-600">Justificadas</span>
+                                <span>38 dias</span>
                             </div>
-                            <h3 class="text-lg font-bold text-slate-900 uppercase">Gestão de Férias</h3>
+                            <div class="w-full bg-slate-100 h-3 rounded-full"><div class="bg-emerald-500 h-full w-[95%] rounded-full"></div></div>
                         </div>
-                        <span class="text-[9px] bg-indigo-50 px-2 py-1 rounded-lg text-indigo-600 font-bold border border-indigo-100 uppercase italic">2025 Activo</span>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <div class="flex justify-between items-center mb-2">
-                            <p class="text-[10px] text-slate-400 uppercase font-black tracking-widest">Dias Gozados (Mensal)</p>
-                        </div>
-                        <div class="vacation-chart-container">
-                            <canvas id="vacationLineChart"></canvas>
-                        </div>
-                    </div>
-
-                    <div class="bg-slate-900 rounded-3xl p-5 mb-4 text-white relative overflow-hidden">
-                        <p class="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">Total Disponível 2025</p>
-                        <div class="flex items-baseline gap-2">
-                            <span class="text-4xl font-black">25</span>
-                            <span class="text-xs text-indigo-400 font-bold uppercase">Dias</span>
-                        </div>
-                        <div class="absolute right-[-10px] top-[-10px] opacity-10 rotate-12"><i data-lucide="calendar" size="60"></i></div>
-                    </div>
-                    
-                    <div class="mt-auto">
-                        <div class="flex justify-between mb-2"><span class="text-[10px] uppercase font-black text-slate-400 tracking-widest">Consumido</span><span class="text-xs font-black">72%</span></div>
-                        <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden mb-4"><div class="bg-indigo-600 h-full w-[72%]"></div></div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div class="bg-slate-900 rounded-2xl p-3 text-center text-white"><p class="text-[9px] text-slate-500 uppercase font-bold">A Agendar</p><p class="text-xl font-black">07</p></div>
-                            <div class="bg-indigo-50 rounded-2xl p-3 text-center border border-indigo-100"><p class="text-[9px] text-indigo-400 uppercase font-bold">Majoração</p><p class="text-xl font-black text-indigo-600">+03</p></div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-2 uppercase font-black tracking-widest">
+                                <span class="text-rose-500">Não Justificadas</span>
+                                <span>2 dias</span>
+                            </div>
+                            <div class="w-full bg-slate-100 h-3 rounded-full"><div class="bg-rose-500 h-full w-[5%] rounded-full"></div></div>
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
 
-                <!-- Participação Modelo (Mudou-se para a barra lateral para dar espaço à Produção) -->
-                <div class="bg-[#f8fafc] p-6 rounded-3xl border border-slate-200 card-shadow flex flex-col">
+        <!-- 4. LINHA INTEIRA: PARTICIPAÇÃO MODELO (1 Linha x 1 Coluna) -->
+        <div class="bg-[#f8fafc] p-8 rounded-[2.5rem] border border-slate-200 card-shadow w-full">
+            <div class="flex flex-col md:flex-row gap-8 items-start">
+                <div class="flex-1 w-full">
                     <div class="flex items-center justify-between mb-6">
-                        <div class="space-y-1">
-                            <h3 class="text-lg font-black text-slate-900 uppercase">Participação Modelo</h3>
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 bg-white rounded-xl border border-slate-100 text-indigo-600 shadow-sm">
+                                <i data-lucide="layers" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-xl font-black text-slate-900 uppercase tracking-tight">Participação por Modelo</h3>
                         </div>
-                        <div class="p-2 bg-white rounded-xl border border-slate-100 text-amber-500 shadow-sm">
+                        <div class="hidden md:block p-2 bg-white rounded-xl border border-slate-100 text-amber-500 shadow-sm">
                             <i data-lucide="zap" class="w-4 h-4"></i>
                         </div>
                     </div>
@@ -267,21 +401,121 @@
                         <canvas id="modelChart"></canvas>
                     </div>
                 </div>
+                
+                <div class="w-full md:w-80 space-y-6 shrink-0">
+                    <div class="bg-indigo-600/5 p-5 rounded-3xl border border-indigo-100 flex gap-4 items-start shadow-sm">
+                        <div class="p-2 bg-indigo-600 rounded-xl shrink-0 shadow-lg shadow-indigo-100">
+                            <i data-lucide="info" class="w-4 h-4 text-white"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-[11px] font-black text-indigo-900 uppercase tracking-[0.1em] mb-2">Impacto Operacional</h4>
+                            <p class="text-[11px] text-indigo-700/80 leading-relaxed font-medium">
+                                O modelo <strong class="text-indigo-900">MWS300</strong> continua a ser o pilar de eficiência, representando um quarto do volume total. A diversificação para a série <strong class="text-indigo-900">700</strong> tem reduzido o risco de dependência técnica, otimizando o fluxo de produção semanal em 12%.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-white p-3 rounded-2xl border border-slate-200/60 shadow-sm">
+                            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Modelo Líder</p>
+                            <p class="text-sm font-black text-slate-800">MWS300 (25%)</p>
+                        </div>
+                        <div class="bg-white p-3 rounded-2xl border border-slate-200/60 shadow-sm">
+                            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Crescimento</p>
+                            <p class="text-sm font-black text-emerald-600">+4.2%</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
 
-    <footer class="max-w-7xl mx-auto mt-4 pt-8 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-slate-400 text-[10px] uppercase tracking-widest font-bold">
+    <footer class="max-w-7xl mx-auto mt-4 pt-8 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-slate-400 text-[10px] uppercase tracking-widest font-bold text-center">
         <div class="flex items-center gap-2 uppercase">
             <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            Sistemas RH Inteligentes • v3.2
+            Sistemas RH Inteligentes • v4.0
         </div>
-        <span>Consolidado a 30 Jan 2026 • Performance Industrial Certificada</span>
+        <span>Consolidado a 30 Jan 2026</span>
     </footer>
 
     <script>
         lucide.createIcons();
 
+        // Elementos do Destaque
+        const highlightSection = document.getElementById('selectionHighlight');
+        const highlightName = document.getElementById('highlightName');
+        const highlightSetorTag = document.getElementById('highlightSetorTag');
+        const highlightSubtitle = document.getElementById('highlightSubtitle');
+        const labelComparePont = document.getElementById('labelComparePont');
+        const labelCompareAssid = document.getElementById('labelCompareAssid');
+        const btnReset = document.getElementById('btnReset');
+
+        // Lógica de Sincronização de Filtros
+        const filterSetor = document.getElementById('filterSetor');
+        const filterColaborador = document.getElementById('filterColaborador');
+        const optGroups = filterColaborador.querySelectorAll('optgroup');
+
+        function updateHighlight() {
+            const setor = filterSetor.value;
+            const colaborador = filterColaborador.value;
+
+            if (colaborador !== "") {
+                // Modo Colaborador Selecionado
+                highlightSection.classList.remove('hidden');
+                highlightName.innerText = colaborador;
+                
+                // Encontrar setor do colaborador
+                let userSetor = "Setor não definido";
+                const selectedOpt = filterColaborador.options[filterColaborador.selectedIndex];
+                const group = selectedOpt.closest('optgroup');
+                if (group) userSetor = group.label;
+                
+                highlightSetorTag.innerText = userSetor;
+                highlightSubtitle.innerText = "Perfil Individual";
+                
+                // Se o setor estiver filtrado também, compara com setor. Se não, com geral.
+                const compareText = setor !== "" ? `vs. Média ${setor}` : "vs. Média Geral";
+                labelComparePont.innerText = compareText;
+                labelCompareAssid.innerText = compareText;
+
+            } else if (setor !== "") {
+                // Modo Setor Selecionado (sem colaborador específico)
+                highlightSection.classList.remove('hidden');
+                highlightName.innerText = `Setor: ${setor}`;
+                highlightSetorTag.innerText = "Visão Departamental";
+                highlightSubtitle.innerText = "Performance do Grupo";
+                labelComparePont.innerText = "vs. Média Geral";
+                labelCompareAssid.innerText = "vs. Média Geral";
+            } else {
+                // Nada selecionado
+                highlightSection.classList.add('hidden');
+            }
+        }
+
+        filterSetor.addEventListener('change', (e) => {
+            const selectedSetor = e.target.value;
+            filterColaborador.value = ""; // Reset colaborador
+            
+            optGroups.forEach(group => {
+                if (selectedSetor === "" || group.label === selectedSetor) {
+                    group.style.display = 'block';
+                } else {
+                    group.style.display = 'none';
+                }
+            });
+            updateHighlight();
+        });
+
+        filterColaborador.addEventListener('change', updateHighlight);
+
+        btnReset.addEventListener('click', () => {
+            filterSetor.value = "";
+            filterColaborador.value = "";
+            optGroups.forEach(g => g.style.display = 'block');
+            updateHighlight();
+        });
+
+        // Configurações Globais do Chart.js
         const lineOptions = {
             responsive: true,
             maintainAspectRatio: false,
@@ -292,6 +526,7 @@
             }
         };
 
+        // Inicialização dos Gráficos
         new Chart(document.getElementById('assidChart'), {
             type: 'line',
             data: {
@@ -357,11 +592,20 @@
                     data: [2, 1, 3, 0, 1, 5, 10, 2, 0, 0, 0, 0],
                     borderColor: '#4F46E5',
                     backgroundColor: 'rgba(79, 70, 229, 0.05)',
-                    borderWidth: 2,
+                    borderWidth: 3,
                     fill: true,
                     tension: 0.3,
-                    pointRadius: 3,
+                    pointRadius: 4,
                     pointBackgroundColor: '#4F46E5'
+                }, {
+                    label: '2024',
+                    data: [1, 2, 4, 2, 2, 4, 8, 3, 1, 0, 0, 0],
+                    borderColor: '#CBD5E1',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0
                 }]
             },
             options: {
@@ -369,7 +613,7 @@
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    y: { display: false, grid: { display: false } },
+                    y: { display: false },
                     x: { grid: { display: false }, ticks: { font: { size: 9, weight: 'bold' }, color: '#94A3B8' } }
                 }
             }
@@ -382,8 +626,7 @@
                 datasets: [{
                     data: [25, 8, 5, 2],
                     backgroundColor: ['#4F46E5', '#F87171', '#FB923C', '#94A3B8'],
-                    borderWidth: 0,
-                    hoverOffset: 4
+                    borderWidth: 0
                 }]
             },
             options: {
@@ -396,37 +639,25 @@
         new Chart(document.getElementById('prodChart'), {
             type: 'doughnut',
             data: {
-                labels: ['Produzido', 'Pendente'],
                 datasets: [{
                     data: [88, 12],
                     backgroundColor: ['#4F46E5', '#F1F5F9'],
                     borderWidth: 0
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '75%',
-                plugins: { legend: { display: false } }
-            }
+            options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } }
         });
 
         new Chart(document.getElementById('prodChartPrev'), {
             type: 'doughnut',
             data: {
-                labels: ['Produzido', 'Pendente'],
                 datasets: [{
                     data: [82, 18],
                     backgroundColor: ['#CBD5E1', '#F1F5F9'],
                     borderWidth: 0
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '75%',
-                plugins: { legend: { display: false } }
-            }
+            options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } }
         });
 
         new Chart(document.getElementById('modelChart'), {
@@ -436,20 +667,33 @@
                 datasets: [{
                     data: [15, 25, 20, 18, 12],
                     backgroundColor: ['#6366F1', '#8B5CF6', '#EC4899', '#F43F5E', '#F59E0B'],
-                    borderRadius: 6,
-                    barThickness: 10
+                    borderRadius: 8,
+                    barThickness: 16
                 }]
             },
             options: {
                 indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 12,
+                        titleFont: { size: 11, weight: 'bold' },
+                        bodyFont: { size: 11 },
+                        cornerRadius: 8
+                    }
+                },
                 scales: {
-                    x: { display: false },
+                    x: { 
+                        grid: { color: '#f1f5f9' }, 
+                        ticks: { font: { size: 10 }, color: '#94a3b8' },
+                        max: 30
+                    },
                     y: { 
                         grid: { display: false }, 
-                        ticks: { font: { size: 10, weight: 'bold' }, color: '#475569' }
+                        ticks: { font: { size: 11, weight: 'bold' }, color: '#475569' } 
                     }
                 }
             }
