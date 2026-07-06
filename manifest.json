@@ -1,0 +1,25 @@
+{
+  "name": "Somengil - Portal de Férias e Horas",
+  "short_name": "Somengil",
+  "description": "Portal de gestão de férias e horas de trabalho da Somengil.",
+  "start_url": "./somengil_portal.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e3ded9",
+  "theme_color": "#2563eb",
+  "lang": "pt-PT",
+  "icons": [
+    {
+      "src": "https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

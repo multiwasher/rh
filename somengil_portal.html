@@ -1,0 +1,1792 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Somengil - Portal de Férias e Horas</title>
+
+  <!-- PWA: manifest, ícones e cor de tema -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="icon" href="https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png">
+  <link rel="apple-touch-icon" href="https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Somengil">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body class="min-h-screen bg-[#e3ded9] text-slate-800 font-sans flex flex-col antialiased">
+
+  <!-- TOAST DE NOTIFICAÇÃO (MENSAGENS DE SUCESSO) -->
+  <div id="success-toast" class="hidden fixed top-20 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-emerald-500 transition-all duration-300">
+    <span>✔️</span>
+    <span id="toast-message" class="font-bold text-xs">Operação realizada com sucesso!</span>
+  </div>
+
+  <!-- HEADER PRINCIPAL -->
+  <header class="bg-white text-slate-800 shadow-sm border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <img
+          src="https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png"
+          alt="Somengil"
+          class="h-10 w-auto object-contain"
+        />
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-base font-bold leading-none tracking-tight text-slate-900">SOMENGIL</h1>
+            <!-- Indicador do estado de ligação ao Google Sheets -->
+            <span id="sheets-indicator" class="bg-slate-100 text-slate-600 text-[9px] font-bold px-1.5 py-0.2 rounded-full flex items-center space-x-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block animate-ping"></span>
+              <span class="hidden sm:inline">A ligar...</span>
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-500 font-medium mt-0.5">Férias e Horas de Trabalho</p>
+        </div>
+      </div>
+
+      <!-- Área do utilizador logado -->
+      <div class="flex items-center space-x-3">
+        <!-- Botão de instalação da PWA (mostrado apenas quando o browser permite instalar) -->
+        <button
+          id="pwa-install-btn"
+          onclick="handleInstallClick()"
+          style="display:none;"
+          class="items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors"
+        >
+          <span>⬇️</span><span>Instalar App</span>
+        </button>
+
+        <div id="user-header-area" class="flex items-center space-x-4">
+          <!-- Inserido dinamicamente via JS -->
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+    
+    <!-- ÁREA DE LOGIN (SE NÃO AUTENTICADO) -->
+    <div id="login-section" class="max-w-md mx-auto my-12 hidden">
+      <div class="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+        <div class="bg-slate-50 p-6 text-center border-b border-slate-200">
+          <h2 class="text-lg font-bold text-slate-800">Ver as minhas Férias e Horas</h2>
+          <p class="text-xs text-slate-500 mt-1">Escreva o seu primeiro nome e a sua senha</p>
+        </div>
+
+        <form id="login-form" onsubmit="submitLogin(event)" class="p-6 space-y-4">
+          <div id="login-error" class="hidden bg-red-50 border border-red-200 text-red-700 text-xs p-3 rounded-lg font-bold">
+            <!-- Mensagem de erro via JS -->
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">O seu primeiro nome:</label>
+            <input 
+              id="login-username"
+              type="text" 
+              required 
+              placeholder="Exemplo: Abel, Carina, Alexandre" 
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">A sua senha (password):</label>
+            <input 
+              id="login-password"
+              type="password" 
+              required 
+              placeholder="Escreva aqui a sua senha única" 
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3 px-4 rounded-lg shadow-md transition-all uppercase tracking-wide"
+          >
+            Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- BANNER DE ESTADO DA LIGAÇÃO ÀS HORAS -->
+    <div id="horas-status" class="hidden mb-4"></div>
+
+    <!-- PAINEL GESTÃO ESCRITÓRIO (RH) -->
+    <div id="rh-section" class="space-y-6 hidden">
+      <!-- Inserido dinamicamente via JS -->
+    </div>
+
+    <!-- PAINEL INDIVIDUAL DO COLABORADOR -->
+    <div id="colab-section" class="space-y-6 hidden">
+      <!-- Inserido dinamicamente via JS -->
+    </div>
+
+    <!-- PAINEL BACKOFFICE (AJUSTE DE HORAS) -->
+    <div id="backoffice-section" class="space-y-6 hidden">
+      <!-- Inserido dinamicamente via JS -->
+    </div>
+
+  </main>
+
+  <!-- RODAPÉ -->
+  <footer class="bg-white text-slate-500 py-6 border-t border-slate-200 text-xs text-center mt-auto">
+    <p>© 2026 Somengil Concept, S.A. Portal de Férias e Horas.</p>
+  </footer>
+
+  <!-- --- JAVASCRIPT PRINCIPAL --- -->
+  <script>
+    // Base de dados local em caso de falha de rede
+    const FALLBACK_COLABORADORES = [
+      { id: 1, nome: "Abel dos Reis Tavares", setor: "Soldadura", totalAnual: 25, diasExtra: 6, diasUsados: 19, diasDisponiveis: 2, diasAposFecho: 2, pass: "4192" },
+      { id: 2, nome: "Alexandre Miguel Silva Nunes das Neves", setor: "Pós-Venda", totalAnual: 24, diasExtra: 1, diasUsados: 15, diasDisponiveis: 9, diasAposFecho: 9, pass: "Alexandre2026" },
+      { id: 3, nome: "Cândido Manuel dos Santos Veloso", setor: "Pós-Venda", totalAnual: 28, diasExtra: 7, diasUsados: 21, diasDisponiveis: 4, diasAposFecho: 4, pass: "Candido2026" },
+      { id: 4, nome: "Carina Andreia Rocha Robaina", setor: "Pós-Venda", totalAnual: 31, diasExtra: 8, diasUsados: 23, diasDisponiveis: 2, diasAposFecho: 3, pass: "Carina2026" },
+      { id: 5, nome: "Carlos Manuel Santos Tarenta", setor: "Logística", totalAnual: 33, diasExtra: 5, diasUsados: 28, diasDisponiveis: 10, diasAposFecho: 10, pass: "CarlosT2026" },
+      { id: 6, nome: "Carlos Miguel Tavares Almeida", setor: "Montagem", totalAnual: 22, diasExtra: 1, diasUsados: 21, diasDisponiveis: 4, diasAposFecho: 4, pass: "CarlosA2026" },
+      { id: 7, nome: "David José Nunes Borges", setor: "Comercial", totalAnual: 22, diasExtra: 2, diasUsados: 20, diasDisponiveis: 0, diasAposFecho: 0, pass: "DavidB2026" },
+      { id: 8, nome: "Diogo Paulo Gonçalves Marques Brito de Sousa", setor: "Comercial", totalAnual: 22, diasExtra: 1, diasUsados: 18, diasDisponiveis: 4, diasAposFecho: 4, pass: "DiogoS2026" },
+      { id: 9, nome: "Fábio da Rocha Silva", setor: "Montagem", totalAnual: 30, diasExtra: 5, diasUsados: 25, diasDisponiveis: 8, diasAposFecho: 8, pass: "Fabio2026" },
+      { id: 10, nome: "Ilídio Costa Ferreira", setor: "Soldadura", totalAnual: 26, diasExtra: 8, diasUsados: 18, diasDisponiveis: 1, diasAposFecho: 1, pass: "Ilidio2026" },
+      { id: 11, nome: "João Maria Bernardo da Cunha Pinto", setor: "Comercial", totalAnual: 22, diasExtra: 1, diasUsados: 19, diasDisponiveis: 3, diasAposFecho: 3, pass: "Joao2026" },
+      { id: 12, nome: "Jonathan de Figueiredo Santos", setor: "Engenharia", totalAnual: 31, diasExtra: 2, diasUsados: 29, diasDisponiveis: 12, diasAposFecho: 12, pass: "Jonathan2026" },
+      { id: 13, nome: "Joni André Costa Regalado", setor: "Engenharia", totalAnual: 31, diasExtra: 1, diasUsados: 30, diasDisponiveis: 1, diasAposFecho: 3, pass: "Joni2026" },
+      { id: 14, nome: "Lúcio Vitor Pinto da Mota", setor: "Financeiro", totalAnual: 24, diasExtra: 7, diasUsados: 17, diasDisponiveis: 0, diasAposFecho: 0, pass: "Lucio2026" },
+      { id: 15, nome: "Luís Leonel Nogueira Pereira", setor: "Montagem", totalAnual: 26, diasExtra: 6, diasUsados: 20, diasDisponiveis: 3, diasAposFecho: 3, pass: "Luis2026" },
+      { id: 16, nome: "Manuel Diniz Cruz do Marco", setor: "Comercial", totalAnual: 22, diasExtra: 2, diasUsados: 20, diasDisponiveis: 0, diasAposFecho: 0, pass: "ManuelM2026" },
+      { id: 17, nome: "Manuel Ferreira Martins", setor: "Serralharia", totalAnual: 33, diasExtra: 3, diasUsados: 30, diasDisponiveis: 1, diasAposFecho: 3, pass: "ManuelF2026" },
+      { id: 18, nome: "Mário Jorge Marques Peixinho Fragoso", setor: "Qualidade", totalAnual: 27, diasExtra: 9, diasUsados: 18, diasDisponiveis: 1, diasAposFecho: 1, pass: "Mario2026" },
+      { id: 19, nome: "Miguel André Ferreira Pacheco Quental", setor: "Comercial", totalAnual: 22, diasExtra: 3, diasUsados: 9, diasDisponiveis: -17, diasAposFecho: -17, pass: "MiguelQ2026" },
+      { id: 20, nome: "Octávio Ferreira da Silva", setor: "Soldadura", totalAnual: 28, diasExtra: 6, diasUsados: 22, diasDisponiveis: 5, diasAposFecho: 5, pass: "Octavio2026" },
+      { id: 21, nome: "Paulo Manuel Frade Brioso", setor: "Compras", totalAnual: 27, diasExtra: 8, diasUsados: 19, diasDisponiveis: 2, diasAposFecho: 2, pass: "Paulo2026" },
+      { id: 22, nome: "Pedro Daniel Domingues Barreira", setor: "Acabamento", totalAnual: 28, diasExtra: 1, diasUsados: 27, diasDisponiveis: 1, diasAposFecho: 0, pass: "Pedro2026" },
+      { id: 23, nome: "Renato Pires Gomes", setor: "Comercial", totalAnual: 22, diasExtra: 2, diasUsados: 23, diasDisponiveis: -1, diasAposFecho: -1, pass: "Renato2026" },
+      { id: 24, nome: "Ricardo Nunes Hipólito", setor: "Engenharia", totalAnual: 36, diasExtra: 10, diasUsados: 26, diasDisponiveis: 9, diasAposFecho: 9, pass: "Ricardo2026" },
+      { id: 25, nome: "Samuel Gomes Póvoa", setor: "IOT", totalAnual: 25, diasExtra: 1, diasUsados: 17, diasDisponiveis: 8, diasAposFecho: 1, pass: "Samuel2026" },
+      { id: 26, nome: "Tony de Jesus Ventura", setor: "Montagem", totalAnual: 25, diasExtra: 0, diasUsados: 12, diasDisponiveis: 13, diasAposFecho: 13, pass: "Tony2026" },
+      { id: 27, nome: "Diogo Miguel Fernandez Martins", setor: "Montagem", totalAnual: 22, diasExtra: 3, diasUsados: 19, diasDisponiveis: 2, diasAposFecho: 2, pass: "DiogoM2026" },
+      { id: 28, nome: "Miguel Marco Marta", setor: "Engenharia", totalAnual: 28, diasExtra: 4, diasUsados: 24, diasDisponiveis: 7, diasAposFecho: 7, pass: "MiguelM2026" },
+      { id: 29, nome: "José Gabriel", setor: "Acabamento", totalAnual: 30, diasExtra: 4, diasUsados: 26, diasDisponiveis: 9, diasAposFecho: 9, pass: "Jose2026" },
+      { id: 30, nome: "David Mendez", setor: "Comercial", totalAnual: 22, diasExtra: 2, diasUsados: 20, diasDisponiveis: 0, diasAposFecho: 0, pass: "DavidM2026" },
+      { id: 31, nome: "Tiago Emanuel Lisboa Dias", setor: "Montagem", totalAnual: 25, diasExtra: 2, diasUsados: 10, diasDisponiveis: 17, diasAposFecho: 17, pass: "Tiago2026" },
+      { id: 32, nome: "Richard Carvalhais", setor: "Montagem", totalAnual: 25, diasExtra: 5, diasUsados: 20, diasDisponiveis: 3, diasAposFecho: 3, pass: "Richard2026" },
+      { id: 33, nome: "Miguel Moura", setor: "Montagem", totalAnual: 25, diasExtra: 6, diasUsados: 19, diasDisponiveis: 2, diasAposFecho: 2, pass: "MiguelMo2026" },
+      { id: 34, nome: "David Sturla", setor: "Comercial", totalAnual: 28, diasExtra: 1, diasUsados: 19, diasDisponiveis: 9, diasAposFecho: 9, pass: "DavidS2026" },
+      { id: 35, nome: "Juan Marco", setor: "Comercial", totalAnual: 14, diasExtra: 1, diasUsados: 13, diasDisponiveis: 2, diasAposFecho: 2, pass: "Juan2026" },
+      { id: 36, nome: "Francisco Ventura", setor: "Comercial", totalAnual: 22, diasExtra: 0, diasUsados: 22, diasDisponiveis: 0, diasAposFecho: 0, pass: "Francisco2026" },
+      { id: 37, nome: "Simão Ventura", setor: "Comercial", totalAnual: 22, diasExtra: 0, diasUsados: 22, diasDisponiveis: 0, diasAposFecho: 0, pass: "Simao2026" },
+      { id: 38, nome: "Ana Vilaça", setor: "Logística", totalAnual: 18, diasExtra: 0, diasUsados: 15, diasDisponiveis: 3, diasAposFecho: 3, pass: "Ana2026" },
+      { id: 39, nome: "Joseph Andrade", setor: "Acabamento", totalAnual: 16, diasExtra: 0, diasUsados: 15, diasDisponiveis: 1, diasAposFecho: 1, pass: "Joseph2026" }
+    ];
+
+    // --- ESTADO GLOBAL DA APLICAÇÃO ---
+    let colaboradores = FALLBACK_COLABORADORES;
+    let loggedUser = null; 
+    let activeTab = "dashboard"; 
+    let filterPeriod = "semana"; 
+    let weekIndex = 0; // 0 = semana mais recente; aumenta para semanas anteriores
+    let isSheetConnected = null; 
+
+    // Resumo de horas por colaborador (2ª folha), indexado por nome normalizado
+    let horasResumo = {};
+    // Picagens diárias por colaborador (2ª folha), indexado por nome normalizado
+    let picagensPorColab = {};
+    let isHorasConnected = false;
+    let horasFonte = 'exemplo'; // 'folha' quando lido do Google Sheets, 'exemplo' quando é o seed
+    let horasErro = "";         // mensagem de erro do último fetch (para diagnóstico no ecrã)
+
+    // Endpoint do Google Apps Script (Web App) para GRAVAR os ajustes na coluna "Ajuste Horas".
+    // Deixar vazio -> modo de pré-visualização (mostra o que seria enviado, não grava).
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKiDziM9n6zDwkdvWMRHZF94qJpbt-9doSZ2gAVAF2eByAQ2d9JITE3k9xqMYHDmHRGA/exec";
+    // Ajustes feitos nesta sessão de backoffice
+    let ajustesSessao = [];
+
+    // Base de dados simulada de picagens diárias
+    let attendanceRecords = {};
+    // Horas compensadas manualmente dadas pelo escritório (RH)
+    let extraHoursCredited = {
+      1: [{ data: "25/06/2026", horas: 2.0, justificacao: "Trabalho extra na manutenção" }]
+    };
+
+    // Estados dos modais de edição do RH
+    let rhSelectedColab = null;
+    let rhModalTab = "credito"; 
+
+    // Pesquisas e Filtros da listagem do RH
+    let searchQuery = "";
+    let sectorFilter = "Todos";
+
+    // Módulos para retificar inputs temporários do modal
+    let clockE1 = "08:00";
+    let clockS1 = "12:00";
+    let clockE2 = "13:00";
+    let clockS2 = "17:00";
+
+    // Inicializar registo de picagens de exemplo
+    function initAttendance() {
+      colaboradores.forEach(c => {
+        if (!attendanceRecords[c.id]) {
+          attendanceRecords[c.id] = [
+            // --- SEMANA ATUAL ---
+            { data: "26/06", diaSem: "Sexta-feira", e1: "08:00", s1: "12:00", e2: "13:00", s2: "18:00", horas: 9.00, emFalta: 0.00 }, 
+            { data: "25/06", diaSem: "Quinta-feira", e1: "08:05", s1: "12:00", e2: "13:10", s2: "17:00", horas: 7.75, emFalta: 0.25 }, 
+            { data: "24/06", diaSem: "Quarta-feira", e1: "08:00", s1: "12:00", e2: "13:00", s2: "15:30", horas: 6.50, emFalta: 1.50 }, 
+            { data: "23/06", diaSem: "Terça-feira", e1: "08:15", s1: "12:05", e2: "13:00", s2: "16:30", horas: 7.35, emFalta: 0.65 }, 
+            { data: "22/06", diaSem: "Segunda-feira", e1: "08:00", s1: "12:00", e2: "13:00", s2: "17:30", horas: 8.50, emFalta: 0.00 }, 
+            // --- SEMANA ANTERIOR ---
+            { data: "19/06", diaSem: "Sexta-feira", e1: "08:00", s1: "12:00", e2: "13:00", s2: "17:00", horas: 8.00, emFalta: 0.00 },
+            { data: "18/06", diaSem: "Quinta-feira", e1: "08:00", s1: "12:00", e2: "13:00", s2: "16:00", horas: 7.00, emFalta: 1.00 },
+            { data: "17/06", diaSem: "Quarta-feira", e1: "08:10", s1: "12:00", e2: "13:00", s2: "17:00", horas: 7.83, emFalta: 0.17 },
+            { data: "16/06", diaSem: "Terça-feira", e1: "08:00", s1: "12:00", e2: "13:00", s2: "18:30", horas: 9.50, emFalta: 0.00 },
+            { data: "15/06", diaSem: "Segunda-feira", e1: "08:00", s1: "12:00", e2: "13:00", s2: "17:00", horas: 8.00, emFalta: 0.00 }
+          ];
+        }
+      });
+    }
+
+    // --- CONEXÃO REAL COM GOOGLE SHEETS ---
+    // Carrega gviz via <script> (JSONP) — não está sujeito a CORS, funciona mesmo em file://
+    function gvizJsonp(sheetId, sheetName) {
+      return new Promise((resolve, reject) => {
+        const cb = 'gviz_cb_' + Math.random().toString(36).slice(2);
+        const script = document.createElement('script');
+        const timeout = setTimeout(() => { limpar(); reject(new Error("Tempo esgotado ao contactar o Google Sheets.")); }, 20000);
+        function limpar() {
+          clearTimeout(timeout);
+          try { delete window[cb]; } catch (e) { window[cb] = undefined; }
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }
+        window[cb] = (resp) => { limpar(); resolve(resp); };
+        script.onerror = () => { limpar(); reject(new Error("Falha ao carregar a folha (verifica a partilha pública).")); };
+        script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json;responseHandler:${cb}&sheet=${encodeURIComponent(sheetName)}`;
+        document.head.appendChild(script);
+      });
+    }
+
+    // Credenciais de login (Colaborador -> Password), de uma folha separada A:B
+    let credenciais = {};
+    const TAB_LOGIN = 'Equipa'; // separador (no ficheiro de horas) com Colaborador (A) e Password (B)
+
+    async function ligarCredenciais() {
+      try {
+        const sheetId = '1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds';
+        const jsonObj = await gvizJsonp(sheetId, TAB_LOGIN);
+        const rows = jsonObj.table.rows || [];
+        const val = (cell) => cell ? (cell.f !== null && cell.f !== undefined ? cell.f : cell.v) : null;
+        const mapa = {};
+        rows.forEach(row => {
+          if (!row.c) return;
+          const nome = val(row.c[0]);   // A: Colaborador
+          const pw   = val(row.c[1]);   // B: Password
+          if (!nome || normNome(nome) === 'colaborador') return;
+          mapa[normNome(nome)] = (pw === null || pw === undefined) ? '' : String(pw).trim();
+        });
+        credenciais = mapa;
+        aplicarCredenciais();
+        console.log('[Login] Credenciais carregadas:', Object.keys(credenciais).length);
+        reRenderAll();
+      } catch (e) {
+        console.error('Falha ao carregar credenciais de login.', e);
+      }
+    }
+
+    // Aplica a password das credenciais a cada colaborador (por nome)
+    function aplicarCredenciais() {
+      if (!credenciais || Object.keys(credenciais).length === 0) return;
+      colaboradores.forEach(c => {
+        const pw = credenciais[normNome(c.nome)];
+        if (pw !== undefined) c.pass = pw;
+      });
+    }
+
+    // Calendário (ausências/férias) — separador "Calendário" do ficheiro de férias
+    let calendario = [];
+    let calCarregado = false;
+    let calSearch = "";
+    let calSetor = "Todos";
+    let calDe = "";   // filtro data início (YYYY-MM-DD)
+    let calAte = "";  // filtro data fim (YYYY-MM-DD)
+    let rhView = 'colaboradores'; // 'colaboradores' | 'calendario' | 'picagens'
+    let pSearch = "";   // filtro colaborador (picagens todos)
+    let pSetor = "Todos";
+    let pDe = "";
+    let pAte = "";
+
+    // Junta as picagens de todos os colaboradores numa lista (com nome e setor)
+    function todasPicagens() {
+      const setorPorNome = {};
+      colaboradores.forEach(c => { setorPorNome[normNome(c.nome)] = c.setor; });
+      const linhas = [];
+      Object.keys(picagensPorColab).forEach(chave => {
+        (picagensPorColab[chave] || []).forEach(p => {
+          linhas.push({
+            nome: p.nome || chave,
+            setor: setorPorNome[chave] || '',
+            dia: p.dia,
+            _dt: parseDataPT(p.dia),
+            horario: p.horario || '',
+            trabalhadoMin: p.trabalhadoMin || 0,
+            saldoMin: p.saldoMin || 0,
+            incompleto: !!p.incompleto
+          });
+        });
+      });
+      return linhas;
+    }
+
+    // Filtra as picagens (colaborador + setor + intervalo de datas)
+    function filtrarPicagens() {
+      const q = pSearch.toLowerCase();
+      const de = pDe ? parseDataPT(pDe) : null;
+      const ate = pAte ? parseDataPT(pAte) : null;
+      if (de) de.setHours(0, 0, 0, 0);
+      if (ate) ate.setHours(23, 59, 59, 999);
+      return todasPicagens().filter(r => {
+        if (q && !r.nome.toLowerCase().includes(q)) return false;
+        if (pSetor !== "Todos" && r.setor !== pSetor) return false;
+        if (de && (!r._dt || r._dt < de)) return false;
+        if (ate && (!r._dt || r._dt > ate)) return false;
+        return true;
+      }).sort((a, b) => {
+        if (a.nome !== b.nome) return a.nome.localeCompare(b.nome);
+        return (b._dt || 0) - (a._dt || 0);
+      });
+    }
+
+    function updatePicFilters() {
+      const s = document.getElementById('pic-search');
+      const pos = s ? s.selectionStart : null;
+      pSearch = s ? s.value : '';
+      const sel = document.getElementById('pic-sector');
+      pSetor = sel ? sel.value : 'Todos';
+      const de = document.getElementById('pic-de');
+      const ate = document.getElementById('pic-ate');
+      pDe = de ? de.value : '';
+      pAte = ate ? ate.value : '';
+      renderRHPanel();
+      const novo = document.getElementById('pic-search');
+      if (novo && document.activeElement !== novo) {
+        novo.focus();
+        if (pos !== null) { try { novo.setSelectionRange(pos, pos); } catch (e) {} }
+      }
+    }
+
+    function limparDatasPic() { pDe = ""; pAte = ""; renderRHPanel(); }
+
+    function exportarPicagensXLSX() {
+      if (typeof XLSX === 'undefined') { triggerToast("Biblioteca de exportação não carregou (precisa de internet)."); return; }
+      const lista = filtrarPicagens();
+      if (!lista.length) { triggerToast("Nada para exportar."); return; }
+      const dados = lista.map(r => ({
+        "Colaborador": r.nome,
+        "Setor": r.setor,
+        "Dia": r.dia,
+        "Horário de Trabalho": r.horario,
+        "Tempo Trabalhado": minutosParaHHMM(r.trabalhadoMin),
+        "Saldo do dia": (r.saldoMin > 0 ? '+' : '') + minutosParaHHMM(r.saldoMin),
+        "Incompleto": r.incompleto ? "Sim" : ""
+      }));
+      const ws = XLSX.utils.json_to_sheet(dados);
+      ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 30 }, { wch: 16 }, { wch: 14 }, { wch: 12 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Picagens");
+      const hoje = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `somengil_picagens_${hoje}.xlsx`);
+      triggerToast(`Exportadas ${lista.length} picagem(ns) para XLSX.`);
+    }
+
+    function setRhView(v) { rhView = v; renderRHPanel(); }
+
+    // Converter várias formas de data para objeto Date (só dia)
+    function parseDataPT(s) {
+      if (!s) return null;
+      s = String(s).trim();
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);       // DD/MM/AAAA
+      if (m) { const a = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return new Date(a, +m[2] - 1, +m[1]); }
+      m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);               // AAAA-MM-DD
+      if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+      m = s.match(/Date\((\d+),(\d+),(\d+)/);                    // Date(a,m,d) do gviz
+      if (m) return new Date(+m[1], +m[2], +m[3]);
+      const d = new Date(s);
+      return isNaN(d) ? null : d;
+    }
+
+    async function ligarCalendario() {
+      try {
+        const sheetId = '1H5_oQls_Syun-iucaPFzz4mrI-9V4So0hF1UhAVbKWI';
+        const jsonObj = await gvizJsonp(sheetId, 'Calendário');
+        const rows = jsonObj.table.rows || [];
+        const val = (cell) => cell ? (cell.f !== null && cell.f !== undefined ? cell.f : cell.v) : '';
+        calendario = rows.map(row => {
+          if (!row.c) return null;
+          const quem = val(row.c[1]);
+          if (!quem || normNome(quem) === 'quem?') return null; // ignora cabeçalho
+          return {
+            quem: String(quem),
+            setor: val(row.c[2]) || '',
+            inicio: val(row.c[3]) || '',
+            fim: val(row.c[4]) || '',
+            end: val(row.c[5]) || '',
+            status: val(row.c[6]) || '',
+            motivo: val(row.c[7]) || '',
+            obs: val(row.c[8]) || '',
+            termino: val(row.c[12]) || ''   // M: Término
+          };
+        }).filter(Boolean);
+        calCarregado = true;
+        console.log('[Calendário] Registos carregados:', calendario.length);
+        reRenderAll();
+      } catch (e) {
+        console.error('Falha ao carregar o Calendário.', e);
+      }
+    }
+
+    // Filtra o calendário por pesquisa + setor + intervalo de datas (sobreposição)
+    function filtrarCalendario() {
+      const q = calSearch.toLowerCase();
+      const de = calDe ? parseDataPT(calDe) : null;
+      const ate = calAte ? parseDataPT(calAte) : null;
+      if (de) de.setHours(0, 0, 0, 0);
+      if (ate) ate.setHours(23, 59, 59, 999);
+      return calendario.filter(r => {
+        const texto = `${r.quem} ${r.motivo} ${r.obs} ${r.status}`.toLowerCase();
+        if (q && !texto.includes(q)) return false;
+        if (calSetor !== "Todos" && r.setor !== calSetor) return false;
+        if (de || ate) {
+          const di = parseDataPT(r.inicio);
+          const df = parseDataPT(r.fim) || di;
+          if (!di) return false;
+          if (ate && di > ate) return false;   // começa depois do fim do intervalo
+          if (de && df < de) return false;     // acaba antes do início do intervalo
+        }
+        return true;
+      });
+    }
+
+    function limparDatasCal() {
+      calDe = ""; calAte = "";
+      renderRHPanel();
+    }
+
+    function updateCalFilters() {
+      const s = document.getElementById('cal-search');
+      const pos = s ? s.selectionStart : null;
+      calSearch = s ? s.value : '';
+      const sel = document.getElementById('cal-sector');
+      calSetor = sel ? sel.value : 'Todos';
+      const de = document.getElementById('cal-de');
+      const ate = document.getElementById('cal-ate');
+      calDe = de ? de.value : '';
+      calAte = ate ? ate.value : '';
+      renderRHPanel();
+      const novo = document.getElementById('cal-search');
+      if (novo && document.activeElement !== novo) {
+        novo.focus();
+        if (pos !== null) { try { novo.setSelectionRange(pos, pos); } catch (e) {} }
+      }
+    }
+
+    async function ligarAoGoogleSheets() {
+      const indicator = document.getElementById('sheets-indicator');
+      try {
+        const sheetId = '1H5_oQls_Syun-iucaPFzz4mrI-9V4So0hF1UhAVbKWI';
+        const jsonObj = await gvizJsonp(sheetId, 'Equipa');
+        let rows = jsonObj.table.rows || [];
+
+        const cel = (row, i) => {
+          if (i == null || !row.c || !row.c[i]) return undefined;
+          const c = row.c[i];
+          return (c.f !== null && c.f !== undefined) ? c.f : c.v;
+        };
+
+        // Colunas por POSIÇÃO fixa (A:H) — layout confirmado da aba "Equipa"
+        // A0 Colaborador | B1 Setor | C2 Total Anual | D3 Dias Extra |
+        // E4 Dias usados | F5 Dias disponíveis | G6 Após fecho | H7 Password
+        const iNome = 0, iSetor = 1, iTotal = 2, iExtra = 3, iUsados = 4, iDisp = 5, iApos = 6, iPass = 7;
+
+        if (rows && rows.length > 0) {
+          const parsedColabs = rows.map((row, index) => {
+            if (!row.c) return null;
+
+            const nome = cel(row, iNome);
+            if (!nome || normNome(nome) === "colaborador") return null;
+
+            const passRaw = cel(row, iPass);
+            const pass = (passRaw === null || passRaw === undefined) ? "" : String(passRaw).trim();
+
+            return {
+              id: index + 100,
+              nome: String(nome).trim(),
+              setor: cel(row, iSetor) || "Sem Setor",
+              totalAnual: Number(cel(row, iTotal)) || 0,
+              diasExtra: Number(cel(row, iExtra)) || 0,
+              diasUsados: Number(cel(row, iUsados)) || 0,
+              diasDisponiveis: Number(cel(row, iDisp)) || 0,
+              diasAposFecho: Number(cel(row, iApos)) || 0,
+              pass
+            };
+          }).filter(Boolean);
+
+          if (parsedColabs.length > 0) {
+            colaboradores = parsedColabs;
+            isSheetConnected = true;
+            initAttendance();
+            aplicarCredenciais();
+            
+            indicator.className = "bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.2 rounded-full flex items-center space-x-1";
+            indicator.innerHTML = `
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+              <span>Google Sheets</span>
+            `;
+            reRenderAll();
+            return;
+          }
+        }
+        throw new Error("Dados inválidos.");
+      } catch (e) {
+        console.error("Falha ao ligar ao Sheets, usando dados de reserva local.", e);
+        isSheetConnected = false;
+        indicator.className = "bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.2 rounded-full flex items-center space-x-1";
+        indicator.innerHTML = `
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
+          <span>Modo Local</span>
+        `;
+        initAttendance();
+        reRenderAll();
+      }
+    }
+
+    // --- CÁLCULO DE ESTATÍSTICAS ---
+    function getFirstName(fullName) {
+      return fullName.split(' ')[0];
+    }
+
+    // Normalizar nomes para comparação (sem acentos, minúsculas, espaços simples)
+    function normNome(s) {
+      return (s === null || s === undefined ? "" : String(s))
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .trim().toLowerCase().replace(/\s+/g, " ");
+    }
+
+    // Converter "HH:MM(:SS)" (aceita negativos, ex. "-2:00:00") em minutos
+    function hhmmParaMinutos(txt) {
+      if (txt === null || txt === undefined) return 0;
+      const s = String(txt).trim();
+      const neg = s.startsWith('-');
+      const p = s.replace('-', '').split(':');
+      if (p.length < 2) return 0;
+      const h = parseInt(p[0], 10) || 0;
+      const m = parseInt(p[1], 10) || 0;
+      return (neg ? -1 : 1) * (h * 60 + m);
+    }
+
+    // Converter minutos em "HH:MM"
+    function minutosParaHHMM(min) {
+      const sinal = min < 0 ? "-" : "";
+      const abs = Math.abs(min);
+      const h = Math.floor(abs / 60);
+      const m = abs % 60;
+      return `${sinal}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    // Processar uma linha (da folha ou de exemplo) para resumo + picagens
+    function processarLinhaHoras(resumo, picagens, c) {
+      if (!c.nome || normNome(c.nome) === "colaborador") return;
+      const chave = normNome(c.nome);
+
+      const bancoMin = hhmmParaMinutos(c.banco);        // Banco de Horas (extra dias de semana)
+      const faltaMin = hhmmParaMinutos(c.falta);        // Tempo em Falta
+      const extraFdsMin = hhmmParaMinutos(c.extraFds);  // Tempo Extra (fim de semana)
+      const trabMin = hhmmParaMinutos(c.trabalhado);    // Tempo Trabalhado (coluna da folha)
+      const saldoMin = hhmmParaMinutos(c.saldo);        // SALDO da folha (já inclui fds e ajustes)
+      const incompleto = normNome(c.horarioIncompleto) === "incompleto"; // coluna "Horário Incompleto"
+
+      if (!resumo[chave]) resumo[chave] = { bancoMin: 0, faltaMin: 0, extraFdsMin: 0, saldoMin: 0, dias: 0, vezesExtra: 0, vezesFds: 0, diasFalta: 0 };
+      resumo[chave].bancoMin += bancoMin;
+      resumo[chave].faltaMin += faltaMin;
+      resumo[chave].extraFdsMin += extraFdsMin;
+      resumo[chave].saldoMin += saldoMin;
+      resumo[chave].dias += 1;
+      if (bancoMin > 0) resumo[chave].vezesExtra += 1;      // dias com horas extra (semana)
+      if (extraFdsMin > 0) resumo[chave].vezesFds += 1;     // fins de semana trabalhados
+      if (faltaMin > 0) resumo[chave].diasFalta += 1;       // dias em que ficou a dever
+
+      if (!picagens[chave]) picagens[chave] = [];
+      picagens[chave].push({ nome: c.nome, dia: c.dia, trabalhadoMin: trabMin, faltaMin: faltaMin, saldoMin: saldoMin, incompleto: incompleto, horario: c.horario || '' });
+    }
+
+    // Dados de exemplo (para pré-visualização quando a folha não está acessível, ex. canvas)
+    function seedExemploHoras() {
+      const resumo = {}, picagens = {};
+      const exemplo = [
+        { banco: "00:00:00", falta: "00:00:00", extraFds: "00:00:00", trabalhado: "08:15:00", saldo: "0:00:00",  inc: "--",         hor: "Horário Normal (semana)" },
+        { banco: "02:00:00", falta: "00:00:00", extraFds: "00:00:00", trabalhado: "10:15:00", saldo: "2:00:00",  inc: "--",         hor: "Horário Normal + Horas Extra (semana)" },
+        { banco: "00:00:00", falta: "02:00:00", extraFds: "00:00:00", trabalhado: "06:15:00", saldo: "-2:00:00", inc: "Incompleto", hor: "Horário Normal (semana)" },
+        { banco: "00:00:00", falta: "00:00:00", extraFds: "04:00:00", trabalhado: "04:00:00", saldo: "4:00:00",  inc: "--",         hor: "Horas Extra (fim de semana)" },
+        { banco: "03:00:00", falta: "02:00:00", extraFds: "00:00:00", trabalhado: "09:15:00", saldo: "1:00:00",  inc: "--",         hor: "Horário Normal (semana)" },
+      ];
+      exemplo.forEach(r => processarLinhaHoras(resumo, picagens, {
+        nome: "Abel dos Reis Tavares", dia: "01/07/2026",
+        banco: r.banco, falta: r.falta, extraFds: r.extraFds, trabalhado: r.trabalhado, saldo: r.saldo, horarioIncompleto: r.inc, horario: r.hor
+      }));
+      horasResumo = resumo;
+      picagensPorColab = picagens;
+      isHorasConnected = true; // usa o caminho de dados reais/exemplo
+      horasFonte = 'exemplo';
+    }
+
+    // Ler a folha de banco de horas / tempo em falta
+    async function ligarHorasSheets() {
+      try {
+        const sheetId = '1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds';
+        const jsonObj = await gvizJsonp(sheetId, 'Dados');
+        const cols = jsonObj.table.cols || [];
+        let rows = jsonObj.table.rows || [];
+
+        // Mapa cabeçalho -> índice (pelos rótulos; fallback à 1ª linha)
+        let headerMap = {};
+        cols.forEach((c, i) => { if (c && c.label) headerMap[normNome(c.label)] = i; });
+        if (Object.keys(headerMap).length === 0 && rows.length > 0) {
+          (rows[0].c || []).forEach((cell, i) => { if (cell && cell.v != null) headerMap[normNome(cell.v)] = i; });
+          rows = rows.slice(1);
+        }
+        const idx = (label, fb) => headerMap[normNome(label)] !== undefined ? headerMap[normNome(label)] : fb;
+        const iNome  = idx("Colaborador", 1);
+        const iDia   = idx("Dia Picagem (hoje)", 2);
+        const iBanco = idx("Banco de Horas", 18);
+        const iFalta = idx("Tempo em Falta", 19);
+        const iExtraFds = idx("Tempo Extra (fds)", 20); // horas extra ao fim de semana
+        const iTrab  = idx("Tempo Trabalhado", 22);      // tempo efetivamente trabalhado (coluna da folha)
+        const iSaldo = idx("SALDO", 26);                 // SALDO total da folha (=X+U+Y-Z), com sinal
+        const iIncompleto = idx("Horário Incompleto", 21); // "Incompleto" nos dias incompletos
+        const iHorario = idx("Horário de Trabalho", 4);    // coluna E
+
+        // Lê o valor formatado (.f) — datas e tempos vêm em formato interno no .v
+        const cellV = (row, i) => {
+          if (i == null || !row.c || !row.c[i]) return undefined;
+          const cell = row.c[i];
+          return (cell.f !== null && cell.f !== undefined) ? cell.f : cell.v;
+        };
+
+        const resumo = {};
+        const picagens = {};
+        rows.forEach(row => {
+          if (!row.c) return;
+          processarLinhaHoras(resumo, picagens, {
+            nome: cellV(row, iNome),
+            dia: cellV(row, iDia),
+            banco: cellV(row, iBanco),
+            falta: cellV(row, iFalta),
+            extraFds: cellV(row, iExtraFds),
+            trabalhado: cellV(row, iTrab),
+            saldo: cellV(row, iSaldo),
+            horarioIncompleto: cellV(row, iIncompleto),
+            horario: cellV(row, iHorario)
+          });
+        });
+
+        horasResumo = resumo;
+        picagensPorColab = picagens;
+        isHorasConnected = true;
+        horasFonte = 'folha';
+        horasErro = "";
+        console.log("[Horas] Cabeçalhos:", headerMap, "| Colaboradores lidos:", Object.keys(horasResumo).length, "| Resumo:", horasResumo);
+        reRenderAll();
+      } catch (e) {
+        horasErro = (e && e.message) ? e.message : String(e);
+        console.error("Falha ao ligar à folha de horas — a usar dados de exemplo.", e);
+        seedExemploHoras();
+        reRenderAll();
+      }
+    }
+
+    function getAttendanceStats(userId) {
+      const records = attendanceRecords[userId] || [];
+      
+      const totalMissing = records.reduce((sum, r) => sum + r.emFalta, 0);
+      
+      const totalClockedOvertime = records.reduce((sum, r) => {
+        const extra = r.horas > 8.0 ? (r.horas - 8.0) : 0;
+        return sum + extra;
+      }, 0);
+      
+      const extras = extraHoursCredited[userId] || [];
+      const totalExtra = extras.reduce((sum, e) => sum + e.horas, 0);
+      
+      const totalOvertime = totalClockedOvertime + totalExtra;
+      
+      const saldoFinalCompensado = totalMissing - totalOvertime;
+      const saldoFinal = Math.max(0, saldoFinalCompensado);
+      
+      return {
+        totalMissing: parseFloat(totalMissing.toFixed(2)),
+        totalOvertime: parseFloat(totalOvertime.toFixed(2)),
+        saldoFinal: parseFloat(saldoFinal.toFixed(2))
+      };
+    }
+
+    // Registos de picagens do utilizador (unificados): { data, trabalhadoMin, faltaMin, saldoMin, incompleto }
+    function getPicagensRecords() {
+      if (isHorasConnected) {
+        const lista = picagensPorColab[normNome(loggedUser.nome)] || [];
+        return lista.map(p => ({
+          data: p.dia,
+          trabalhadoMin: p.trabalhadoMin,
+          faltaMin: p.faltaMin,
+          saldoMin: p.saldoMin || 0,
+          incompleto: !!p.incompleto,
+          horario: p.horario || ''
+        }));
+      }
+      // Fallback (Modo Local): a partir dos dados simulados
+      const recs = attendanceRecords[loggedUser.id] || [];
+      return recs.map(r => ({
+        data: r.data,
+        trabalhadoMin: Math.round((r.horas || 0) * 60),
+        faltaMin: Math.round((r.emFalta || 0) * 60),
+        saldoMin: 0,
+        incompleto: (r.emFalta || 0) > 0,
+        horario: ''
+      }));
+    }
+
+    // Agrupar as picagens por semana (segunda a domingo), da mais recente para a mais antiga
+    function getWeeksForUser() {
+      const recs = getPicagensRecords();
+
+      const parseData = (d) => {
+        const p = String(d).split('/');
+        const dia = +p[0];
+        const mes = (+p[1]) - 1;
+        const ano = p[2] ? +p[2] : 2026; // ano assumido se os registos não o trouxerem
+        return new Date(ano, mes, dia);
+      };
+
+      const segundaDe = (date) => {
+        const dt = new Date(date);
+        const dow = (dt.getDay() + 6) % 7; // 0 = segunda
+        dt.setDate(dt.getDate() - dow);
+        dt.setHours(0, 0, 0, 0);
+        return dt;
+      };
+
+      const mapa = new Map();
+      recs.forEach(r => {
+        const dt = parseData(r.data);
+        if (isNaN(dt)) return;
+        const seg = segundaDe(dt);
+        const chave = seg.getTime();
+        if (!mapa.has(chave)) mapa.set(chave, { segunda: seg, registos: [] });
+        mapa.get(chave).registos.push({ ...r, _dt: dt });
+      });
+
+      const semanas = Array.from(mapa.values()).sort((a, b) => b.segunda - a.segunda);
+      semanas.forEach(s => s.registos.sort((a, b) => b._dt - a._dt));
+      return semanas;
+    }
+
+    function prevWeek() { // semana mais antiga
+      weekIndex++;
+      renderColabPanel();
+    }
+
+    function nextWeek() { // semana mais recente
+      weekIndex--;
+      renderColabPanel();
+    }
+
+    // --- LOGIN E LOGOUT ---
+    function submitLogin(event) {
+      event.preventDefault();
+      const userIn = document.getElementById('login-username').value.trim();
+      const passIn = document.getElementById('login-password').value.trim();
+      const errBox = document.getElementById('login-error');
+
+      errBox.classList.add('hidden');
+
+      if (userIn.toUpperCase() === "RH" && passIn === "7891") {
+        loggedUser = { id: "RH", nome: "Escritório (RH)", setor: "Recursos Humanos", isRH: true };
+        document.getElementById('login-username').value = "";
+        document.getElementById('login-password').value = "";
+        reRenderAll();
+        return;
+      }
+
+      if (userIn.toUpperCase() === "RG" && passIn === "7891") {
+        loggedUser = { id: "RG", nome: "Backoffice", setor: "Ajuste de Horas", isBackoffice: true };
+        document.getElementById('login-username').value = "";
+        document.getElementById('login-password').value = "";
+        reRenderAll();
+        return;
+      }
+
+      const match = colaboradores.find(c => {
+        const firstName = getFirstName(c.nome).toLowerCase();
+        const cleanInputName = userIn.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const cleanFirstName = firstName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return cleanFirstName === cleanInputName && c.pass === passIn;
+      });
+
+      if (match) {
+        loggedUser = { ...match, isRH: false };
+        document.getElementById('login-username').value = "";
+        document.getElementById('login-password').value = "";
+        activeTab = "dashboard";
+        reRenderAll();
+      } else {
+        errBox.innerText = "Nome ou Senha errada. Por favor, tente outra vez.";
+        errBox.classList.remove('hidden');
+      }
+    }
+
+    function handleLogout() {
+      loggedUser = null;
+      reRenderAll();
+    }
+
+    function setTab(tab) {
+      activeTab = tab;
+      renderColabPanel();
+    }
+
+    function setFilterPeriodValue(period) {
+      filterPeriod = period;
+      renderColabPanel();
+    }
+
+    function updateFilters() {
+      const campo = document.getElementById('rh-search');
+      const pos = campo ? campo.selectionStart : null;
+      searchQuery = campo ? campo.value : '';
+      const sel = document.getElementById('rh-sector-filter');
+      sectorFilter = sel ? sel.value : 'Todos';
+      renderRHPanel();
+      // devolver o foco e a posição do cursor ao campo de pesquisa (foi recriado no re-render)
+      const novo = document.getElementById('rh-search');
+      if (novo && document.activeElement !== novo) {
+        novo.focus();
+        if (pos !== null) { try { novo.setSelectionRange(pos, pos); } catch (e) {} }
+      }
+    }
+
+    function triggerToast(message) {
+      const toast = document.getElementById('success-toast');
+      document.getElementById('toast-message').innerText = message;
+      toast.classList.remove('hidden');
+      setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 4000);
+    }
+
+    // --- BACKOFFICE: AJUSTE DE HORAS ---
+    function renderBackofficePanel() {
+      const container = document.getElementById('backoffice-section');
+
+      const opcoes = [...colaboradores]
+        .filter(c => c.nome)
+        .sort((a, b) => a.nome.localeCompare(b.nome))
+        .map(c => `<option value="${String(c.nome).replace(/"/g, '&quot;')}">${c.nome}</option>`)
+        .join('');
+
+      const endpointOk = APPS_SCRIPT_URL && APPS_SCRIPT_URL.trim().length > 0;
+      const bannerEndpoint = endpointOk
+        ? `<div class="text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">Ligado ao Google Sheets para gravação (coluna "Ajuste Horas").</div>`
+        : `<div class="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Modo pré-visualização: o endpoint de gravação ainda não está configurado, por isso os ajustes <strong>não são gravados</strong> na folha — apenas mostrados abaixo.</div>`;
+
+      const linhasSessao = ajustesSessao.length === 0
+        ? `<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">Ainda não fez ajustes nesta sessão.</td></tr>`
+        : ajustesSessao.slice().reverse().map(a => {
+            const cor = a.minutos < 0 ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50';
+            const estCor = a.estado === 'Gravado' ? 'text-emerald-700 bg-emerald-50' : (a.estado === 'Erro' ? 'text-red-700 bg-red-50' : 'text-slate-600 bg-slate-100');
+            return `
+              <tr class="hover:bg-slate-50">
+                <td class="px-4 py-2.5 font-bold text-slate-800">${a.colaborador}</td>
+                <td class="px-3 py-2.5 text-center font-mono"><span class="${cor} px-2 py-0.5 rounded font-bold">${a.ajuste}</span></td>
+                <td class="px-3 py-2.5 text-slate-600">${a.motivo || '—'}</td>
+                <td class="px-4 py-2.5 text-right"><span class="${estCor} px-2 py-0.5 rounded text-[10px] font-bold uppercase">${a.estado}</span></td>
+              </tr>`;
+          }).join('');
+
+      container.innerHTML = `
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <span class="bg-slate-800 text-white text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase">Backoffice</span>
+          <h2 class="text-xl font-bold text-slate-900 mt-2">Ajuste de Horas Extra</h2>
+          <p class="text-xs text-slate-500 mt-0.5 mb-4">Adicione ou remova horas a um colaborador. Valores positivos somam ao banco de horas; negativos retiram.</p>
+          ${bannerEndpoint}
+
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end mt-4">
+            <div class="md:col-span-4">
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Colaborador</label>
+              <select id="bo-colab" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                ${opcoes || '<option value="">(sem colaboradores)</option>'}
+              </select>
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Sinal</label>
+              <select id="bo-sinal" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="+">+ Adicionar</option>
+                <option value="-">− Remover</option>
+              </select>
+            </div>
+            <div class="md:col-span-1">
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Horas</label>
+              <input id="bo-horas" type="number" min="0" value="0" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div class="md:col-span-1">
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Min.</label>
+              <input id="bo-min" type="number" min="0" max="59" value="0" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div class="md:col-span-4">
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Motivo (opcional)</label>
+              <input id="bo-motivo" type="text" placeholder="ex.: correção de picagem" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <button onclick="guardarAjuste()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-colors shadow-sm">
+              Guardar ajuste
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden text-xs">
+          <div class="p-4 border-b border-slate-150 bg-slate-50">
+            <h4 class="font-bold text-slate-900">Ajustes feitos nesta sessão</h4>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-150">
+              <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider">
+                <tr>
+                  <th class="px-4 py-3 text-left">Colaborador</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Ajuste</th>
+                  <th class="px-3 py-3 text-left">Motivo</th>
+                  <th class="px-4 py-3 text-right">Estado</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-150 font-medium">${linhasSessao}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function guardarAjuste() {
+      const colaborador = document.getElementById('bo-colab').value;
+      const sinal = document.getElementById('bo-sinal').value;
+      const horas = parseInt(document.getElementById('bo-horas').value, 10) || 0;
+      const minutos = parseInt(document.getElementById('bo-min').value, 10) || 0;
+      const motivo = document.getElementById('bo-motivo').value.trim();
+
+      if (!colaborador) { triggerToast("Escolha um colaborador."); return; }
+      if (horas === 0 && minutos === 0) { triggerToast("Indique um valor de horas/minutos."); return; }
+
+      const totalMin = (sinal === '-' ? -1 : 1) * (horas * 60 + minutos);
+      const ajusteTxt = (totalMin > 0 ? '+' : '') + minutosParaHHMM(totalMin);
+
+      const registo = {
+        colaborador,
+        minutos: totalMin,
+        ajuste: ajusteTxt,
+        motivo,
+        data: new Date().toISOString(),
+        estado: APPS_SCRIPT_URL ? 'A enviar…' : 'Pré-visualização'
+      };
+      ajustesSessao.push(registo);
+      renderBackofficePanel();
+
+      if (APPS_SCRIPT_URL) {
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ colaborador, ajuste: ajusteTxt, minutos: totalMin, motivo, data: registo.data })
+        })
+        .then(() => { registo.estado = 'Enviado'; renderBackofficePanel(); triggerToast("Ajuste enviado para a folha."); })
+        .catch(() => { registo.estado = 'Erro'; renderBackofficePanel(); triggerToast("Falha ao contactar o Google Sheets."); });
+      } else {
+        triggerToast(`Ajuste registado (pré-visualização): ${colaborador} ${ajusteTxt}`);
+      }
+    }
+
+    // Ajuste do Saldo a partir do painel RH — tipo 'add' (adicionar) ou 'rem' (retirar)
+    function ajusteSaldoRH(id, tipo) {
+      const colab = colaboradores.find(c => c.id === id);
+      if (!colab) return;
+      const input = document.getElementById((tipo === 'rem' ? 'rem-' : 'add-') + id);
+      let minutos = hhmmParaMinutos(input ? input.value.trim() : '');
+      if (!minutos || minutos <= 0) { triggerToast("Indique um valor positivo, ex.: 1:30"); return; }
+      if (tipo === 'rem') minutos = -minutos; // retirar -> negativo (coluna "Ajuste Horas (retirar)")
+
+      const ajusteTxt = (minutos > 0 ? '+' : '') + minutosParaHHMM(minutos);
+      const motivo = tipo === 'rem' ? 'Retirar horas (RH)' : 'Adicionar horas (RH)';
+      const chave = normNome(colab.nome);
+
+      // reflexo imediato no ecrã (otimista)
+      if (!horasResumo[chave]) horasResumo[chave] = { bancoMin: 0, faltaMin: 0, extraFdsMin: 0, saldoMin: 0, dias: 0, vezesExtra: 0, vezesFds: 0, diasFalta: 0 };
+      horasResumo[chave].saldoMin += minutos;
+
+      ajustesSessao.push({ colaborador: colab.nome, minutos, ajuste: ajusteTxt, motivo, data: new Date().toISOString(), estado: APPS_SCRIPT_URL ? 'Enviado' : 'Pré-visualização' });
+      renderRHPanel();
+
+      if (APPS_SCRIPT_URL) {
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ colaborador: colab.nome, ajuste: ajusteTxt, minutos, motivo, data: new Date().toISOString() })
+        })
+        .then(() => triggerToast(`Enviado para a folha: ${colab.nome} ${ajusteTxt}`))
+        .catch(() => triggerToast(`Falha ao enviar ${ajusteTxt}.`));
+      } else {
+        triggerToast(`Ajuste registado (pré-visualização): ${colab.nome} ${ajusteTxt}`);
+      }
+    }
+
+    function atualizarHoras() {
+      triggerToast("A reler a folha…");
+      ligarHorasSheets();
+    }
+
+    function renderHorasStatus() {
+      const el = document.getElementById('horas-status');
+      if (!el) return;
+      if (!loggedUser) { el.classList.add('hidden'); return; }
+      el.classList.remove('hidden');
+
+      if (horasFonte === 'folha') {
+        el.innerHTML = `
+          <div class="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
+            <span class="text-[11px] font-bold text-emerald-800">🟢 Horas lidas do Google Sheets (${Object.keys(horasResumo).length} colaborador(es) com registos).</span>
+            <button onclick="atualizarHoras()" class="text-[11px] font-bold text-emerald-800 bg-white border border-emerald-300 rounded-lg px-3 py-1 hover:bg-emerald-100">🔄 Atualizar</button>
+          </div>`;
+      } else {
+        el.innerHTML = `
+          <div class="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+            <div>
+              <span class="text-[11px] font-bold text-amber-900 block">🟡 A mostrar dados de EXEMPLO — não conseguiu ler a folha.</span>
+              ${horasErro ? `<span class="text-[10px] text-amber-700 block mt-0.5 font-mono">${horasErro}</span>` : `<span class="text-[10px] text-amber-700 block mt-0.5">Se estás no preview do canvas, isto é normal (o sandbox bloqueia o acesso). Abre o ficheiro num servidor.</span>`}
+            </div>
+            <button onclick="atualizarHoras()" class="text-[11px] font-bold text-amber-900 bg-white border border-amber-300 rounded-lg px-3 py-1 hover:bg-amber-100 shrink-0">🔄 Tentar de novo</button>
+          </div>`;
+      }
+    }
+
+    // Selecionar/desselecionar todas as checkboxes de exportação
+    function toggleTodosExp(master) {
+      document.querySelectorAll('.exp-sel').forEach(c => { c.checked = master.checked; });
+    }
+
+    // Exportar as ausências (calendário) filtradas para XLSX
+    function exportarCalendarioXLSX() {
+      if (typeof XLSX === 'undefined') { triggerToast("Biblioteca de exportação não carregou (precisa de internet)."); return; }
+      const lista = filtrarCalendario();
+      if (!lista.length) { triggerToast("Nada para exportar."); return; }
+      const dados = lista.map(r => ({
+        "Quem?": r.quem,
+        "Setor": r.setor,
+        "Início": r.inicio,
+        "Fim": r.fim,
+        "Motivo": r.motivo,
+        "Status": r.status,
+        "Observações": r.obs,
+        "Término": r.termino
+      }));
+      const ws = XLSX.utils.json_to_sheet(dados);
+      ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 16 }, { wch: 30 }, { wch: 14 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Ausencias");
+      const hoje = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `somengil_ausencias_${hoje}.xlsx`);
+      triggerToast(`Exportadas ${lista.length} ausência(s) para XLSX.`);
+    }
+
+    // Exportar para XLSX os colaboradores selecionados (ou todos se nenhum selecionado)
+    function exportarXLSX() {
+      if (typeof XLSX === 'undefined') { triggerToast("Biblioteca de exportação não carregou (precisa de internet)."); return; }
+
+      const marcados = Array.from(document.querySelectorAll('.exp-sel:checked')).map(c => c.value);
+      let alvo = colaboradores;
+      if (marcados.length > 0) {
+        alvo = colaboradores.filter(c => marcados.includes(String(c.id)));
+      }
+      if (!alvo.length) { triggerToast("Nada para exportar."); return; }
+
+      const dados = alvo.map(c => {
+        const hr = horasResumo[normNome(c.nome)] || { bancoMin: 0, faltaMin: 0, extraFdsMin: 0, saldoMin: 0 };
+        return {
+          "Colaborador": c.nome,
+          "Setor": c.setor,
+          "Férias do ano": c.totalAnual,
+          "Férias usadas": c.diasUsados,
+          "Férias após fecho": c.diasAposFecho,
+          "Banco de horas": minutosParaHHMM(hr.bancoMin),
+          "Tempo em falta": minutosParaHHMM(hr.faltaMin),
+          "Extra fim de semana": minutosParaHHMM(hr.extraFdsMin),
+          "Saldo horas": (hr.saldoMin > 0 ? '+' : '') + minutosParaHHMM(hr.saldoMin)
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(dados);
+      ws['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 12 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Colaboradores");
+      const hoje = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `somengil_horas_ferias_${hoje}.xlsx`);
+      triggerToast(`Exportados ${alvo.length} colaborador(es) para XLSX.`);
+    }
+
+    // --- RE-RENDERIZADORES DE INTERFACE (HTML DINÂMICO) ---
+    function reRenderAll() {
+      renderHeader();
+
+      const loginSec = document.getElementById('login-section');
+      const rhSec = document.getElementById('rh-section');
+      const colabSec = document.getElementById('colab-section');
+      const boSec = document.getElementById('backoffice-section');
+
+      loginSec.classList.add('hidden');
+      rhSec.classList.add('hidden');
+      colabSec.classList.add('hidden');
+      boSec.classList.add('hidden');
+
+      if (!loggedUser) {
+        loginSec.classList.remove('hidden');
+      } else if (loggedUser.isBackoffice) {
+        boSec.classList.remove('hidden');
+        renderBackofficePanel();
+      } else if (loggedUser.isRH) {
+        rhSec.classList.remove('hidden');
+        renderRHPanel();
+      } else {
+        colabSec.classList.remove('hidden');
+        renderColabPanel();
+      }
+      renderHorasStatus();
+    }
+
+    function renderHeader() {
+      const area = document.getElementById('user-header-area');
+      if (!loggedUser) {
+        area.innerHTML = "";
+        return;
+      }
+
+      area.innerHTML = `
+        <div class="text-right hidden sm:block">
+          <span class="block text-xs font-bold text-slate-800">${loggedUser.nome}</span>
+          <span class="block text-[10px] text-slate-500 uppercase font-mono font-bold">${loggedUser.setor}</span>
+        </div>
+        <button 
+          onclick="handleLogout()"
+          class="bg-red-600 hover:bg-red-700 text-white border border-red-600 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1 shadow-sm"
+        >
+          <span>Sair</span>
+        </button>
+      `;
+    }
+
+    function renderRHPanel() {
+      const container = document.getElementById('rh-section');
+      
+      const setores = ["Todos", ...Array.from(new Set(colaboradores.map(c => c.setor)))];
+      
+      const filtered = colaboradores.filter(c => {
+        const matchesSearch = c.nome.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              c.setor.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesSector = sectorFilter === "Todos" || c.setor === sectorFilter;
+        return matchesSearch && matchesSector;
+      });
+
+      const totalSaldoMin = colaboradores.reduce((sum, c) => {
+        const hr = horasResumo[normNome(c.nome)];
+        return sum + (hr ? hr.saldoMin : 0);
+      }, 0);
+      const totalSaldoTxt = (totalSaldoMin > 0 ? '+' : '') + minutosParaHHMM(totalSaldoMin);
+
+      // --- Calendário (ausências/férias) ---
+      const calSetores = ["Todos", ...Array.from(new Set(calendario.map(r => r.setor).filter(Boolean)))];
+      const calFiltrado = filtrarCalendario();
+      const calLinhas = calFiltrado.length === 0
+        ? `<tr><td colspan="8" class="px-4 py-6 text-center text-slate-400">${calCarregado ? 'Sem registos para este filtro.' : 'A carregar calendário…'}</td></tr>`
+        : calFiltrado.map(r => `
+            <tr class="hover:bg-slate-50">
+              <td class="px-4 py-2.5 font-bold text-slate-800">${r.quem}</td>
+              <td class="px-3 py-2.5 text-slate-500">${r.setor}</td>
+              <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${r.inicio}</td>
+              <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${r.fim}</td>
+              <td class="px-3 py-2.5">${r.motivo}</td>
+              <td class="px-3 py-2.5 text-center" style="text-align:center;">${r.status ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">${r.status}</span>` : ''}</td>
+              <td class="px-3 py-2.5 text-slate-500">${r.obs}</td>
+              <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${r.termino}</td>
+            </tr>`).join('');
+
+      const calHTML = `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-150 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-1.5"><span>📅</span> Calendário de ausências <span class="text-[11px] font-medium text-slate-400">(${calFiltrado.length})</span></h3>
+            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+              <input id="cal-search" type="text" placeholder="Procurar por nome, motivo, obs…" value="${calSearch}" oninput="updateCalFilters()" class="block w-full md:w-56 px-3 py-1.5 text-xs border border-slate-300 rounded-lg" />
+              <select id="cal-sector" onchange="updateCalFilters()" class="text-xs border border-slate-300 rounded-lg p-1.5 font-medium">
+                ${calSetores.map(s => `<option value="${s}" ${calSetor === s ? 'selected' : ''}>${s}</option>`).join('')}
+              </select>
+              <label class="text-[11px] font-bold text-slate-400">De</label>
+              <input id="cal-de" type="date" value="${calDe}" onchange="updateCalFilters()" class="text-xs border border-slate-300 rounded-lg p-1" />
+              <label class="text-[11px] font-bold text-slate-400">Até</label>
+              <input id="cal-ate" type="date" value="${calAte}" onchange="updateCalFilters()" class="text-xs border border-slate-300 rounded-lg p-1" />
+              ${(calDe || calAte) ? `<button onclick="limparDatasCal()" class="text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg px-2 py-1">✕ datas</button>` : ''}
+              <button onclick="exportarCalendarioXLSX()" class="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-3 py-1.5 shrink-0">⬇ Exportar</button>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-150 text-xs">
+              <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider">
+                <tr>
+                  <th class="px-4 py-3 text-left">Quem?</th>
+                  <th class="px-3 py-3 text-left">Setor</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Início</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Fim</th>
+                  <th class="px-3 py-3 text-left">Motivo</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Status</th>
+                  <th class="px-3 py-3 text-left">Observações</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Término</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-150 font-medium">${calLinhas}</tbody>
+            </table>
+          </div>
+        </div>`;
+
+      // --- Picagens de todos os colaboradores ---
+      const picSetores = ["Todos", ...Array.from(new Set(colaboradores.map(c => c.setor).filter(Boolean)))];
+      const picFiltrado = filtrarPicagens();
+      const picLinhas = picFiltrado.length === 0
+        ? `<tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">${isHorasConnected ? 'Sem picagens para este filtro.' : 'A carregar picagens…'}</td></tr>`
+        : picFiltrado.map(r => {
+            const inc = r.incompleto;
+            const fds = normNome(r.horario) === normNome("Horas Extra (fim de semana)");
+            const neg = (r.saldoMin || 0) < 0;
+            const cls = inc ? 'bg-red-50 hover:bg-red-100' : (fds ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50');
+            return `
+              <tr class="transition-colors ${cls}">
+                <td class="px-4 py-2.5 font-bold ${inc ? 'text-red-900' : (fds ? 'text-amber-900' : 'text-slate-900')}">${r.nome}</td>
+                <td class="px-3 py-2.5 text-slate-500">${r.setor}</td>
+                <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${r.dia}</td>
+                <td class="px-3 py-2.5 text-slate-600">${r.horario || '—'}</td>
+                <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${minutosParaHHMM(r.trabalhadoMin)}</td>
+                <td class="px-4 py-2.5 text-right font-mono"><span class="${neg ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'} px-2 py-0.5 rounded font-bold">${(r.saldoMin > 0 ? '+' : '') + minutosParaHHMM(r.saldoMin)}</span></td>
+              </tr>`;
+          }).join('');
+
+      const picHTML = `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-150 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-1.5"><span>⏰</span> Picagens de todos <span class="text-[11px] font-medium text-slate-400">(${picFiltrado.length})</span></h3>
+            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+              <input id="pic-search" type="text" placeholder="Colaborador…" value="${pSearch}" oninput="updatePicFilters()" class="block w-full md:w-48 px-3 py-1.5 text-xs border border-slate-300 rounded-lg" />
+              <select id="pic-sector" onchange="updatePicFilters()" class="text-xs border border-slate-300 rounded-lg p-1.5 font-medium">
+                ${picSetores.map(s => `<option value="${s}" ${pSetor === s ? 'selected' : ''}>${s}</option>`).join('')}
+              </select>
+              <label class="text-[11px] font-bold text-slate-400">De</label>
+              <input id="pic-de" type="date" value="${pDe}" onchange="updatePicFilters()" class="text-xs border border-slate-300 rounded-lg p-1" />
+              <label class="text-[11px] font-bold text-slate-400">Até</label>
+              <input id="pic-ate" type="date" value="${pAte}" onchange="updatePicFilters()" class="text-xs border border-slate-300 rounded-lg p-1" />
+              ${(pDe || pAte) ? `<button onclick="limparDatasPic()" class="text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg px-2 py-1">✕ datas</button>` : ''}
+              <button onclick="exportarPicagensXLSX()" class="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-3 py-1.5 shrink-0">⬇ Exportar</button>
+            </div>
+          </div>
+          <div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
+            <table class="min-w-full divide-y divide-slate-150 text-xs">
+              <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0">
+                <tr>
+                  <th class="px-4 py-3 text-left">Colaborador</th>
+                  <th class="px-3 py-3 text-left">Setor</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Dia</th>
+                  <th class="px-3 py-3 text-left">Horário de Trabalho</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Tempo Trabalhado</th>
+                  <th class="px-4 py-3 text-right">Saldo do dia</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-150 font-medium">${picLinhas}</tbody>
+            </table>
+          </div>
+        </div>`;
+
+      container.innerHTML = `
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 border border-slate-200 rounded-2xl shadow-sm">
+          <div>
+            <span class="bg-blue-100 text-blue-800 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase">Escritório</span>
+            <h2 class="text-xl font-bold text-slate-900 mt-1">Panorama Geral de Férias e Horas (RH)</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Consulta do estado de todos os colaboradores. Pode corrigir o saldo de horas na coluna à direita.</p>
+            <p class="text-[11px] mt-1.5 font-medium ${horasFonte === 'folha' ? 'text-emerald-700' : 'text-amber-700'}">
+              ${horasFonte === 'folha'
+                ? `🟢 Horas lidas da folha — ${Object.keys(horasResumo).length} colaborador(es) com registos.`
+                : `🟡 Horas em modo exemplo (a folha das horas não respondeu). O saldo real só aparece quando a folha é acessível.`}
+            </p>
+          </div>
+
+          <div class="flex gap-4">
+            <div class="bg-slate-50 p-3 rounded-xl border border-slate-150 text-center min-w-28">
+              <span class="block text-[9px] uppercase font-bold text-slate-400">Total Pessoal</span>
+              <span class="text-lg font-bold text-slate-950">${colaboradores.length}</span>
+            </div>
+            <div class="bg-slate-50 p-3 rounded-xl border border-slate-150 text-center min-w-32">
+              <span class="block text-[9px] uppercase font-bold text-slate-400">Saldo de horas (equipa)</span>
+              <span class="text-lg font-bold ${totalSaldoMin < 0 ? 'text-red-700' : 'text-emerald-700'}">${totalSaldoTxt}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white p-2 border border-slate-200 rounded-xl shadow-sm flex flex-wrap gap-2">
+          <button onclick="setRhView('colaboradores')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'colaboradores' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">👥 Colaboradores</button>
+          <button onclick="setRhView('picagens')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'picagens' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">⏰ Picagens</button>
+          <button onclick="setRhView('calendario')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'calendario' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">📅 Calendário de ausências (${calendario.length})</button>
+        </div>
+
+        ${rhView === 'calendario' ? calHTML : rhView === 'picagens' ? picHTML : `
+        <div class="bg-white p-4 border border-slate-200 rounded-xl shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
+          <input 
+            id="rh-search"
+            type="text" 
+            placeholder=" Procura pelo nome ou setor do trabalhador..." 
+            value="${searchQuery}"
+            oninput="updateFilters()"
+            class="block w-full md:w-96 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-blue-500"
+          />
+
+          <div class="flex items-center space-x-2 w-full md:w-auto justify-end">
+            <span class="text-xs font-bold text-slate-400">Setor:</span>
+            <select 
+              id="rh-sector-filter"
+              onchange="updateFilters()"
+              class="text-xs border border-slate-300 rounded-lg p-1.5 focus:ring-blue-500 font-medium"
+            >
+              ${setores.map(s => `<option value="${s}" ${sectorFilter === s ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>
+            <button onclick="exportarXLSX()" class="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-3 py-1.5 flex items-center gap-1 shrink-0">
+              ⬇ Exportar XLSX
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-200 text-xs">
+              <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider">
+                <tr>
+                  <th class="px-3 py-3.5 text-center"><input type="checkbox" onclick="toggleTodosExp(this)" title="Selecionar todos" /></th>
+                  <th class="px-6 py-3.5 text-left">Trabalhador</th>
+                  <th class="px-4 py-3.5 text-center" style="text-align: center;">Férias do Ano</th>
+                  <th class="px-4 py-3.5 text-center" style="text-align: center;">Férias Usadas</th>
+                  <th class="px-4 py-3.5 text-center" style="text-align: center;">Sobram p/ gozar</th>
+                  <th class="px-4 py-3.5 text-center" style="text-align: center;">Saldo Horas</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-slate-150">
+                ${filtered.map(colab => {
+                  const hr = horasResumo[normNome(colab.nome)] || { bancoMin: 0, faltaMin: 0, extraFdsMin: 0, saldoMin: 0 };
+                  const saldoNeg = hr.saldoMin < 0;
+                  const saldoTxt = (hr.saldoMin > 0 ? '+' : '') + minutosParaHHMM(hr.saldoMin);
+
+                  return `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                      <td class="px-3 py-3 text-center"><input type="checkbox" class="exp-sel" value="${colab.id}" /></td>
+                      <td class="px-6 py-3">
+                        <div>
+                          <span class="block font-bold text-slate-900 text-sm">${colab.nome}</span>
+                          <span class="text-xs text-slate-400 font-medium">${colab.setor}</span>
+                          <span class="inline-block mt-0.5 text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded font-mono">
+                            Login: <strong class="text-slate-700">${getFirstName(colab.nome)}</strong>
+                          </span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-3 text-center font-bold text-slate-700" style="text-align: center;">
+                        ${colab.totalAnual} dias
+                      </td>
+                      <td class="px-4 py-3 text-center" style="text-align: center;">
+                        <span class="text-red-700 font-bold">${colab.diasUsados}</span> gozados
+                      </td>
+                      <td class="px-4 py-3 text-center" style="text-align: center;">
+                        <span class="inline-block px-2 py-0.5 rounded-full font-bold text-[11px] ${colab.diasAposFecho < 0 ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-800'}">
+                          ${colab.diasAposFecho} dias
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-center" style="text-align: center;">
+                        <div class="flex flex-col items-center gap-2">
+                          <span class="font-mono font-bold text-sm px-2 py-0.5 rounded ${saldoNeg ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'}">${saldoTxt}</span>
+                          <div class="flex gap-1 items-center">
+                            <input id="add-${colab.id}" type="text" placeholder="1:00" class="w-14 border border-slate-300 rounded px-1 py-0.5 text-center text-[11px] font-mono" />
+                            <button onclick="ajusteSaldoRH(${colab.id}, 'add')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded">+ Add</button>
+                          </div>
+                          <div class="flex gap-1 items-center">
+                            <input id="rem-${colab.id}" type="text" placeholder="0:30" class="w-14 border border-slate-300 rounded px-1 py-0.5 text-center text-[11px] font-mono" />
+                            <button onclick="ajusteSaldoRH(${colab.id}, 'rem')" class="bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold px-2 py-1 rounded">− Retirar</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        `}
+      `;
+    }
+
+    function renderColabPanel() {
+      const container = document.getElementById('colab-section');
+      const stats = getAttendanceStats(loggedUser.id);
+
+      let innerContent = "";
+
+      if (activeTab === "dashboard") {
+        innerContent = `
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+              <span class="block text-xs font-bold text-slate-400 uppercase">Férias normais do ano</span>
+              <span class="block text-2xl font-bold text-slate-900 mt-1">${loggedUser.totalAnual} dias</span>
+            </div>
+
+            <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+              <span class="block text-xs font-bold text-slate-400 uppercase">Férias que já tirou</span>
+              <span class="block text-2xl font-bold text-amber-600 mt-1">${loggedUser.diasUsados} dias</span>
+            </div>
+
+            <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+              <span class="block text-xs font-bold text-slate-400 uppercase">Férias disponíveis após fecho da empresa</span>
+              <span class="block text-2xl font-bold mt-1 ${loggedUser.diasAposFecho < 0 ? 'text-red-600' : 'text-blue-600'}">
+                ${loggedUser.diasAposFecho} dias
+              </span>
+            </div>
+          </div>
+
+          <div class="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-xs text-amber-800">
+            <span class="font-bold">Nota:</span> as "férias livres que ainda tem" já descontam os dias em que a fábrica fecha obrigatoriamente (fecho Somengil).
+          </div>
+        `;
+      } else if (activeTab === "horas") {
+        let cards, gridCls;
+        if (isHorasConnected) {
+          // Valores exatos da folha
+          const res = horasResumo[normNome(loggedUser.nome)] || { bancoMin: 0, faltaMin: 0, extraFdsMin: 0, saldoMin: 0, dias: 0, vezesExtra: 0, vezesFds: 0, diasFalta: 0 };
+
+          // Saldo de horas extra (com sinal) — somatório da coluna "Saldo Horas Extra" da folha
+          const saldoMin = res.saldoMin;
+          const deveHoras = saldoMin < 0;
+          let saldoTitulo, saldoValor, saldoSub, saldoCor, saldoBg, saldoBorder;
+          if (saldoMin > 0) {
+            saldoTitulo = "Saldo de horas extra"; saldoValor = `+${minutosParaHHMM(saldoMin)}`; saldoSub = "A seu favor"; saldoCor = "text-emerald-700"; saldoBg = "bg-emerald-50/60"; saldoBorder = "border-emerald-150";
+          } else if (saldoMin < 0) {
+            saldoTitulo = "Saldo de horas extra"; saldoValor = minutosParaHHMM(saldoMin); saldoSub = "Está a dever horas"; saldoCor = "text-red-600"; saldoBg = "bg-red-50/60"; saldoBorder = "border-red-100";
+          } else {
+            saldoTitulo = "Saldo de horas extra"; saldoValor = "00:00"; saldoSub = "Em dia"; saldoCor = "text-slate-700"; saldoBg = "bg-slate-50"; saldoBorder = "border-slate-200";
+          }
+
+          const bancoTxt = minutosParaHHMM(res.bancoMin);
+          const fdsTxt = minutosParaHHMM(res.extraFdsMin);
+
+          // Horas trabalhadas no mês atual (soma do Tempo Trabalhado das picagens deste mês)
+          const agora = new Date();
+          const parseDia = (d) => { const p = String(d).split('/'); return new Date(p[2] ? +p[2] : 2026, (+p[1]) - 1, +p[0]); };
+          const registos = picagensPorColab[normNome(loggedUser.nome)] || [];
+          let trabMesMin = 0;
+          registos.forEach(r => {
+            const dt = parseDia(r.dia);
+            if (!isNaN(dt) && dt.getMonth() === agora.getMonth() && dt.getFullYear() === agora.getFullYear()) trabMesMin += r.trabalhadoMin;
+          });
+          const mesNome = agora.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' });
+
+          gridCls = "grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs";
+          cards = `
+            <div class="${saldoBg} p-5 rounded-2xl border ${saldoBorder} text-center">
+              <span class="block text-xs font-bold uppercase tracking-wide ${saldoCor}">${saldoTitulo}</span>
+              <span class="block text-3xl font-black mt-2 ${saldoCor}">${saldoValor}</span>
+              <span class="text-[10px] block mt-1 font-medium ${saldoCor}">${saldoSub}</span>
+            </div>
+
+            <div class="bg-emerald-50/60 p-5 rounded-2xl border border-emerald-150 text-center">
+              <span class="block text-xs font-bold text-emerald-800 uppercase tracking-wide">Horas extra feitas</span>
+              <span class="block text-3xl font-black text-emerald-700 mt-2">${res.vezesExtra}${res.vezesExtra === 1 ? ' vez' : ' vezes'}</span>
+              <span class="text-[10px] text-emerald-700 block mt-1 font-medium">+${bancoTxt} no total (dias de semana)</span>
+            </div>
+
+            <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 text-center">
+              <span class="block text-xs font-bold text-slate-600 uppercase tracking-wide">Horas trabalhadas — este mês</span>
+              <span class="block text-3xl font-black text-slate-800 mt-2">${minutosParaHHMM(trabMesMin)}</span>
+              <span class="text-[10px] text-slate-400 block mt-1 font-medium capitalize">${mesNome}</span>
+            </div>
+
+            <div class="bg-indigo-50/60 p-5 rounded-2xl border border-indigo-100 text-center">
+              <span class="block text-xs font-bold text-indigo-800 uppercase tracking-wide">Trabalho ao fim de semana</span>
+              <span class="block text-3xl font-black text-indigo-700 mt-2">${res.vezesFds}${res.vezesFds === 1 ? ' vez' : ' vezes'}</span>
+              <span class="text-[10px] text-indigo-700 block mt-1 font-medium">+${fdsTxt} ao sábado / domingo</span>
+            </div>
+          `;
+        } else {
+          // Fallback (folha bloqueada / Modo Local): dados simulados
+          const saldoLiquido = parseFloat((stats.totalOvertime - stats.totalMissing).toFixed(2));
+          let saldoTitulo, saldoValor, saldoSub, saldoCor;
+          if (saldoLiquido > 0) {
+            saldoTitulo = "Saldo final a seu favor"; saldoValor = `+${saldoLiquido}h`; saldoSub = "Tem horas a seu favor."; saldoCor = "text-emerald-700";
+          } else if (saldoLiquido < 0) {
+            saldoTitulo = "Saldo final que ainda deve"; saldoValor = `${saldoLiquido}h`; saldoSub = "Ainda precisa de compensar."; saldoCor = "text-amber-600";
+          } else {
+            saldoTitulo = "Saldo final"; saldoValor = "0h"; saldoSub = "Tudo em dia! Não deve nem tem horas a haver."; saldoCor = "text-emerald-700";
+          }
+
+          cards = `
+            <div class="bg-red-50/60 p-5 rounded-2xl border border-red-100 text-center">
+              <span class="block text-xs font-bold text-red-800 uppercase tracking-wide">Horas em falta</span>
+              <span class="block text-3xl font-black text-red-600 mt-2">${stats.totalMissing}h</span>
+              <span class="text-[10px] text-red-700 block mt-1 font-medium">Dias em que fez menos de 8 horas</span>
+            </div>
+
+            <div class="bg-emerald-50/60 p-5 rounded-2xl border border-emerald-150 text-center">
+              <span class="block text-xs font-bold text-emerald-800 uppercase tracking-wide">Horas feitas a mais</span>
+              <span class="block text-3xl font-black text-emerald-700 mt-2">+${stats.totalOvertime}h</span>
+              <span class="text-[10px] text-emerald-700 block mt-1 font-medium">Trabalho extra e compensações dadas pelo escritório</span>
+            </div>
+
+            <div class="bg-blue-50/60 p-5 rounded-2xl border border-blue-100 text-center">
+              <span class="block text-xs font-bold text-blue-800 uppercase tracking-wide">${saldoTitulo}</span>
+              <span class="block text-3xl font-black mt-2 ${saldoCor}">${saldoValor}</span>
+              <span class="text-[10px] text-slate-500 block mt-1 font-medium">${saldoSub}</span>
+            </div>
+          `;
+          gridCls = "grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs";
+        }
+
+        innerContent = `
+          <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
+            <h3 class="text-slate-900 font-bold text-sm mb-4 flex items-center space-x-1.5">
+              <span>📊</span>
+              <span>Resumo das minhas Horas de Trabalho</span>
+            </h3>
+            <div class="${gridCls}">
+              ${cards}
+            </div>
+          </div>
+        `;
+      } else {
+        const semanas = getWeeksForUser();
+        if (semanas.length === 0) weekIndex = 0;
+        else { if (weekIndex < 0) weekIndex = 0; if (weekIndex > semanas.length - 1) weekIndex = semanas.length - 1; }
+
+        const semanaAtual = semanas[weekIndex] || { registos: [], segunda: null };
+        const visibleRecords = semanaAtual.registos;
+
+        const fmt = (dt) => dt.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        let labelSemana = "Sem registos";
+        if (semanaAtual.segunda) {
+          const domingo = new Date(semanaAtual.segunda.getTime() + 6 * 86400000);
+          labelSemana = `${fmt(semanaAtual.segunda)} a ${fmt(domingo)}`;
+        }
+
+        const podeRecentar = weekIndex > 0;                       // há semana mais recente
+        const podeRecuar = weekIndex < semanas.length - 1;        // há semana mais antiga
+        const btnBase = "px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center space-x-1.5 border";
+        const btnOn = "bg-white text-slate-700 border-slate-300 hover:bg-slate-50";
+        const btnOff = "bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed";
+
+        // Totais acumulados (todas as picagens do colaborador)
+        const todos = getPicagensRecords();
+        const totalSaldoMin = todos.reduce((s, r) => s + (r.saldoMin || 0), 0);
+        const totalIncompletos = todos.reduce((n, r) => n + (r.incompleto ? 1 : 0), 0);
+        const saldoColor = totalSaldoMin < 0 ? 'text-red-600' : 'text-emerald-700';
+        const incColor = totalIncompletos > 0 ? 'text-red-600' : 'text-emerald-700';
+        const fmtSaldo = (m) => (m > 0 ? '+' : '') + minutosParaHHMM(m);
+
+        innerContent = `
+          <div class="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm flex items-center justify-between gap-3">
+            <button
+              onclick="${podeRecuar ? 'prevWeek()' : ''}"
+              ${podeRecuar ? '' : 'disabled'}
+              class="${btnBase} ${podeRecuar ? btnOn : btnOff}"
+            >
+              <span>◀</span><span class="hidden sm:inline">Semana anterior</span>
+            </button>
+
+            <div class="text-center">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Semana</span>
+              <span class="text-sm font-black text-slate-900">${labelSemana}</span>
+            </div>
+
+            <button
+              onclick="${podeRecentar ? 'nextWeek()' : ''}"
+              ${podeRecentar ? '' : 'disabled'}
+              class="${btnBase} ${podeRecentar ? btnOn : btnOff}"
+            >
+              <span class="hidden sm:inline">Semana seguinte</span><span>▶</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 text-xs">
+            <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+              <span class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Saldo horas extra</span>
+              <span class="block text-3xl font-black mt-2 ${saldoColor}">${fmtSaldo(totalSaldoMin)}</span>
+              <span class="text-[10px] text-slate-400 block mt-1 font-medium">${totalSaldoMin < 0 ? 'Está a dever horas' : 'A seu favor'}</span>
+            </div>
+            <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+              <span class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Dias incompletos</span>
+              <span class="block text-3xl font-black mt-2 ${incColor}">${totalIncompletos}</span>
+              <span class="text-[10px] text-slate-400 block mt-1 font-medium">${totalIncompletos === 1 ? '1 dia abaixo do horário' : totalIncompletos + ' dias abaixo do horário'}</span>
+            </div>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden text-xs">
+            <div class="p-4 border-b border-slate-150 flex justify-between items-center bg-slate-50">
+              <h4 class="font-bold text-slate-900">O meu registo diário de picagens</h4>
+              <span class="text-[10px] uppercase font-bold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full">Consulta</span>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-slate-150 text-xs">
+                <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="px-4 py-3 text-left">Dia / Data</th>
+                    <th class="px-3 py-3 text-left">Horário de Trabalho</th>
+                    <th class="px-3 py-3 text-center" style="text-align: center;">Tempo Trabalhado</th>
+                    <th class="px-4 py-3 text-right">Saldo do dia</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-150 font-medium">
+                  ${visibleRecords.length === 0 ? `
+                    <tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 font-medium">Sem registos para esta semana.</td></tr>
+                  ` : visibleRecords.map(rec => {
+                    const linhaInc = rec.incompleto;
+                    const linhaFds = normNome(rec.horario) === normNome("Horas Extra (fim de semana)");
+                    const saldoNeg = (rec.saldoMin || 0) < 0;
+                    const diaSem = rec._dt ? rec._dt.toLocaleDateString('pt-PT', { weekday: 'long' }) : '';
+                    const trClasse = linhaInc ? 'bg-red-50 hover:bg-red-100' : (linhaFds ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50');
+                    return `
+                      <tr class="transition-colors ${trClasse}">
+                        <td class="px-4 py-3">
+                          <div class="font-bold ${linhaInc ? 'text-red-900' : (linhaFds ? 'text-amber-900' : 'text-slate-900')}">${rec.data}</div>
+                          <div class="text-[10px] text-slate-400 capitalize">${diaSem}${linhaInc ? ' · Incompleto' : ''}</div>
+                        </td>
+                        <td class="px-3 py-3 text-slate-600">${rec.horario || '—'}</td>
+                        <td class="px-3 py-3 text-center font-mono" style="text-align: center;">
+                          <span class="font-bold text-slate-800">${minutosParaHHMM(rec.trabalhadoMin)}</span>
+                        </td>
+                        <td class="px-4 py-3 text-right font-mono">
+                          <span class="${saldoNeg ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'} px-2 py-0.5 rounded font-bold">${fmtSaldo(rec.saldoMin || 0)}</span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      container.innerHTML = `
+        <div class="bg-white border border-slate-200 text-slate-800 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden">
+          <div class="z-10">
+            <span class="text-[10px] uppercase tracking-wider font-extrabold text-blue-600">A minha área pessoal</span>
+            <h2 class="text-xl font-bold text-slate-900 mt-1">Olá, ${getFirstName(loggedUser.nome)}!</h2>
+            <p class="text-xs text-slate-500 mt-1">Aqui pode consultar o seu saldo de férias e as suas horas.</p>
+          </div>
+
+          <div class="flex flex-wrap gap-3 z-10 w-full md:w-auto">
+            <button
+              onclick="setTab('dashboard')"
+              class="px-5 py-2.5 rounded-xl text-xs font-black border transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'}"
+            >
+              📅 As minhas Férias
+            </button>
+            <button
+              onclick="setTab('horas')"
+              class="px-5 py-2.5 rounded-xl text-xs font-black border transition-all ${activeTab === 'horas' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'}"
+            >
+              📊 Horas
+            </button>
+            <button
+              onclick="setTab('attendance')"
+              class="px-5 py-2.5 rounded-xl text-xs font-black border transition-all ${activeTab === 'attendance' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'}"
+            >
+              ⏰ Picagens
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-6">
+          ${innerContent}
+        </div>
+      `;
+    }
+
+    // --- PWA: instalação e service worker ---
+    let deferredInstallPrompt = null;
+
+    function showInstallButton() {
+      const btn = document.getElementById('pwa-install-btn');
+      if (btn) btn.style.display = 'inline-flex';
+    }
+
+    function hideInstallButton() {
+      const btn = document.getElementById('pwa-install-btn');
+      if (btn) btn.style.display = 'none';
+    }
+
+    function isAppInstalled() {
+      return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    }
+
+    // Chrome/Edge/Android disparam este evento quando a app é instalável
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      if (!isAppInstalled()) showInstallButton();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      hideInstallButton();
+      triggerToast("Aplicação instalada com sucesso!");
+    });
+
+    function handleInstallClick() {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.finally(() => {
+          deferredInstallPrompt = null;
+          hideInstallButton();
+        });
+        return;
+      }
+      // iOS Safari não suporta beforeinstallprompt — mostrar instruções manuais
+      triggerToast("Para instalar: toque em Partilhar e depois em 'Adicionar ao Ecrã Principal'.");
+    }
+
+    if (!isAppInstalled() && /iphone|ipad|ipod/i.test(navigator.userAgent)) {
+      showInstallButton();
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('Registo do Service Worker falhou:', err));
+      });
+    }
+
+    // Inicializar a aplicação quando o DOM estiver pronto
+    document.addEventListener("DOMContentLoaded", () => {
+      initAttendance();
+      seedExemploHoras();   // dados de exemplo disponíveis já (canvas / pré-visualização)
+      reRenderAll();
+      ligarAoGoogleSheets();
+      ligarCredenciais();   // carrega logins/passwords da folha (Colaborador/Password)
+      ligarCalendario();    // carrega o separador "Calendário" (ausências/férias)
+      ligarHorasSheets();   // se a folha responder, substitui o exemplo pelos dados reais
+    });
+  </script>
+
+</body>
+</html>
