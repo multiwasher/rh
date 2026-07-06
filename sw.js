@@ -1,8 +1,8 @@
 // Service Worker do Portal Somengil — cache do "app shell" para arranque rápido e uso offline.
 // Não intercepta pedidos a domínios externos (Google Sheets, CDNs), para não interferir com os dados ao vivo.
-const CACHE_NAME = 'somengil-portal-v1';
+const CACHE_NAME = 'somengil-portal-v2';
 const APP_SHELL = [
-  './somengil_portal.html',
+  './index.html',
   './manifest.json'
 ];
 
