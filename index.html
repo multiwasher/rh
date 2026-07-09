@@ -6,7 +6,7 @@
   <title>Somengil - Portal de Férias e Horas</title>
 
   <!-- PWA: manifest, ícones e cor de tema -->
-  <link rel="manifest" href="./manifest.json">
+  <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#2563eb">
   <link rel="icon" href="https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png">
   <link rel="apple-touch-icon" href="https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png">
@@ -1772,7 +1772,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('Registo do Service Worker falhou:', err));
+        navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('Registo do Service Worker falhou:', err));
       });
     }
 

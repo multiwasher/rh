@@ -1,9 +1,10 @@
-// Service Worker do Portal Somengil — cache do "app shell" para arranque rápido e uso offline.
-// Não intercepta pedidos a domínios externos (Google Sheets, CDNs), para não interferir com os dados ao vivo.
-const CACHE_NAME = 'somengil-portal-v2';
+// Service Worker do Portal Somengil — App Shell caching e estratégia mais resiliente.
+// Mantemos requests externas (CDNs, Google Sheets) sem cache por origem.
+const CACHE_NAME = 'somengil-portal-v3';
 const APP_SHELL = [
-  './index.html',
-  './manifest.json'
+  '/',
+  '/index.html',
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -22,16 +23,24 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Helper: return true for same-origin requests we want to handle
+function isSameOrigin(request) {
+  try {
+    const url = new URL(request.url);
+    return url.origin === self.location.origin;
+  } catch (e) {
+    return false;
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
-  const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return; // deixa passar pedidos a outros domínios
-
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req)
+  // Network-first for navigation requests (HTML pages) — keeps app fresh and falls back to cache
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req)
         .then((res) => {
           if (res && res.status === 200) {
             const copy = res.clone();
@@ -39,8 +48,25 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // Only handle same-origin non-navigation GETs (assets, manifest)
+  if (!isSameOrigin(req)) return;
+
+  event.respondWith(
+    caches.match(req).then((cached) => {
+      if (cached) return cached;
+      return fetch(req)
+        .then((res) => {
+          if (!res || res.status !== 200) return res;
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+          return res;
+        })
         .catch(() => cached);
-      return cached || network;
     })
   );
 });
