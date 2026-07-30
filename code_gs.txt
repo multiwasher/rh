@@ -1,0 +1,44 @@
+function doGet(e) {
+  if (e && e.parameter && e.parameter.teste) {
+    return ContentService.createTextOutput(JSON.stringify(escreverAjuste(e.parameter)));
+  }
+  return ContentService.createTextOutput("OK - endpoint ativo");
+}
+
+function doPost(e) {
+  return ContentService.createTextOutput(JSON.stringify(escreverAjuste(JSON.parse(e.postData.contents))))
+                       .setMimeType(ContentService.MimeType.JSON);
+}
+
+function escreverAjuste(dados) {
+  var ss = SpreadsheetApp.openById("1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds");
+  var sh = ss.getSheetByName("Dados") || ss.getSheets()[0];
+  var cab = sh.getDataRange().getValues()[0];
+
+  function col(nome) {                       // procura tolerante (trim + minúsculas)
+    var alvo = String(nome).trim().toLowerCase();
+    for (var i = 0; i < cab.length; i++)
+      if (String(cab[i]).trim().toLowerCase() === alvo) return i;
+    return -1;
+  }
+  var iColab   = col("Colaborador");
+  var iDia     = col("Dia Picagem (hoje)");
+  var iHorario = col("Horário de Trabalho");          // ← coluna E
+  var iAdd     = col("Ajuste Horas (adicionar)");
+  var iRem     = col("Ajuste Horas (retirar)");
+  var iSaldo   = col("SALDO");
+
+  var min = Number(dados.minutos) || 0, abs = Math.abs(min);
+  var val = ("0" + Math.floor(abs / 60)).slice(-2) + ":" + ("0" + (abs % 60)).slice(-2) + ":00";
+
+  var linha = new Array(cab.length).fill("");
+  if (iColab   >= 0) linha[iColab]   = dados.colaborador;
+  if (iDia     >= 0) linha[iDia]     = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy");
+  if (iHorario >= 0) linha[iHorario] = "Ajuste";      // ← preenche "Ajuste"
+  if (min >= 0 && iAdd >= 0) linha[iAdd] = val;
+  if (min <  0 && iRem >= 0) linha[iRem] = val;
+  if (iSaldo   >= 0) linha[iSaldo]   = (min < 0 ? "-" : "") + val;
+
+  sh.appendRow(linha);
+  return { ok: true, colunasEncontradas: { iColab: iColab, iHorario: iHorario, iAdd: iAdd, iRem: iRem, iSaldo: iSaldo } };
+}

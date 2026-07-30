@@ -1334,20 +1334,30 @@
       const picFiltrado = filtrarPicagens();
       const picTotalTrabalhadoMin = picFiltrado.reduce((sum, r) => sum + (r.trabalhadoMin || 0), 0);
       const picHorasEsperadasMin = horasEsperadasMesPicagens() * 60;
+      // Deteta colaboradores com mais do que um registo no mesmo dia (dentro do filtro atual)
+      const picContagemPorDia = {};
+      picFiltrado.forEach(r => {
+        const chave = normNome(r.nome) + '|' + r.dia;
+        picContagemPorDia[chave] = (picContagemPorDia[chave] || 0) + 1;
+      });
+
       const picLinhas = picFiltrado.length === 0
         ? `<tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">${isHorasConnected ? 'Sem picagens para este filtro.' : 'A carregar picagens…'}</td></tr>`
         : picFiltrado.map(r => {
             const inc = r.incompleto;
             const fds = normNome(r.horario) === normNome("Horas Extra (fim de semana)");
             const neg = (r.saldoMin || 0) < 0;
+            const dup = picContagemPorDia[normNome(r.nome) + '|' + r.dia] > 1;
             const cls = inc ? 'bg-red-50 hover:bg-red-100' : (fds ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50');
+            const corTexto = dup ? 'text-orange-600 font-bold' : '';
+            const tituloDup = dup ? ' title="Mais do que um registo neste dia para este colaborador"' : '';
             return `
-              <tr class="transition-colors ${cls}">
-                <td class="px-4 py-2.5 font-bold ${inc ? 'text-red-900' : (fds ? 'text-amber-900' : 'text-slate-900')}">${r.nome}</td>
-                <td class="px-3 py-2.5 text-slate-500">${r.setor}</td>
-                <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${r.dia}</td>
-                <td class="px-3 py-2.5 text-slate-600">${r.horario || '—'}</td>
-                <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${minutosParaHHMM(r.trabalhadoMin)}</td>
+              <tr class="transition-colors ${cls}"${tituloDup}>
+                <td class="px-4 py-2.5 font-bold ${corTexto || (inc ? 'text-red-900' : (fds ? 'text-amber-900' : 'text-slate-900'))}">${r.nome}</td>
+                <td class="px-3 py-2.5 ${corTexto || 'text-slate-500'}">${r.setor}</td>
+                <td class="px-3 py-2.5 text-center font-mono ${corTexto}" style="text-align:center;">${r.dia}</td>
+                <td class="px-3 py-2.5 ${corTexto || 'text-slate-600'}">${r.horario || '—'}</td>
+                <td class="px-3 py-2.5 text-center font-mono ${corTexto}" style="text-align:center;">${minutosParaHHMM(r.trabalhadoMin)}</td>
                 <td class="px-4 py-2.5 text-right font-mono"><span class="${neg ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'} px-2 py-0.5 rounded font-bold">${(r.saldoMin > 0 ? '+' : '') + minutosParaHHMM(r.saldoMin)}</span></td>
               </tr>`;
           }).join('');
