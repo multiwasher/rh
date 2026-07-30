@@ -202,7 +202,7 @@
 
     // Endpoint do Google Apps Script (Web App) para GRAVAR os ajustes na coluna "Ajuste Horas".
     // Deixar vazio -> modo de pré-visualização (mostra o que seria enviado, não grava).
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKiDziM9n6zDwkdvWMRHZF94qJpbt-9doSZ2gAVAF2eByAQ2d9JITE3k9xqMYHDmHRGA/exec";
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzgXxyWTbLrTKtFIMLmBcXbtBoTh66BRrIoFjwQmVsqZ2TMmR-NLjjgmZuvspZDTzZ32w/exec";
     // Ajustes feitos nesta sessão de backoffice
     let ajustesSessao = [];
 
@@ -338,7 +338,8 @@
             horario: p.horario || '',
             trabalhadoMin: p.trabalhadoMin || 0,
             saldoMin: p.saldoMin || 0,
-            incompleto: !!p.incompleto
+            incompleto: !!p.incompleto,
+            linha: p.linha
           });
         });
       });
@@ -676,7 +677,7 @@
       if (faltaMin > 0) resumo[chave].diasFalta += 1;       // dias em que ficou a dever
 
       if (!picagens[chave]) picagens[chave] = [];
-      picagens[chave].push({ nome: c.nome, dia: c.dia, trabalhadoMin: trabMin, faltaMin: faltaMin, saldoMin: saldoMin, incompleto: incompleto, horario: c.horario || '' });
+      picagens[chave].push({ nome: c.nome, dia: c.dia, trabalhadoMin: trabMin, faltaMin: faltaMin, saldoMin: saldoMin, incompleto: incompleto, horario: c.horario || '', linha: c.linha });
     }
 
     // Dados de exemplo (para pré-visualização quando a folha não está acessível, ex. canvas)
@@ -734,7 +735,7 @@
 
         const resumo = {};
         const picagens = {};
-        rows.forEach(row => {
+        rows.forEach((row, i) => {
           if (!row.c) return;
           processarLinhaHoras(resumo, picagens, {
             nome: cellV(row, iNome),
@@ -745,7 +746,8 @@
             trabalhado: cellV(row, iTrab),
             saldo: cellV(row, iSaldo),
             horarioIncompleto: cellV(row, iIncompleto),
-            horario: cellV(row, iHorario)
+            horario: cellV(row, iHorario),
+            linha: i + 2 // linha real na folha "Dados" (1 = cabeçalho)
           });
         });
 
@@ -1115,6 +1117,29 @@
       }
     }
 
+    // Elimina um registo de picagem diretamente na folha "Dados" (Google Sheets), pela linha real
+    function eliminarPicagemRH(linha, nome, dia) {
+      if (!APPS_SCRIPT_URL) { triggerToast("Endpoint de gravação não configurado — não é possível eliminar."); return; }
+      if (!confirm(`Eliminar o registo de ${nome} em ${dia}? Esta ação apaga a linha diretamente na folha e não pode ser desfeita.`)) return;
+
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ acao: 'eliminar', linha, colaborador: nome, dia })
+      })
+      .then(() => {
+        // Remoção otimista da UI (o pedido é "no-cors": não é possível confirmar o resultado real)
+        const chave = normNome(nome);
+        if (picagensPorColab[chave]) {
+          picagensPorColab[chave] = picagensPorColab[chave].filter(p => p.linha !== linha);
+        }
+        renderRHPanel();
+        triggerToast(`Registo eliminado: ${nome} (${dia}). A confirmar na folha…`);
+      })
+      .catch(() => triggerToast("Falha ao contactar o Google Sheets para eliminar o registo."));
+    }
+
     function atualizarHoras() {
       triggerToast("A reler a folha…");
       ligarHorasSheets();
@@ -1342,7 +1367,7 @@
       });
 
       const picLinhas = picFiltrado.length === 0
-        ? `<tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">${isHorasConnected ? 'Sem picagens para este filtro.' : 'A carregar picagens…'}</td></tr>`
+        ? `<tr><td colspan="7" class="px-4 py-6 text-center text-slate-400">${isHorasConnected ? 'Sem picagens para este filtro.' : 'A carregar picagens…'}</td></tr>`
         : picFiltrado.map(r => {
             const inc = r.incompleto;
             const fds = normNome(r.horario) === normNome("Horas Extra (fim de semana)");
@@ -1351,6 +1376,10 @@
             const cls = inc ? 'bg-red-50 hover:bg-red-100' : (fds ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50');
             const corTexto = dup ? 'text-orange-600 font-bold' : '';
             const tituloDup = dup ? ' title="Mais do que um registo neste dia para este colaborador"' : '';
+            const podeEliminar = r.linha != null && APPS_SCRIPT_URL;
+            const btnEliminar = podeEliminar
+              ? `<button onclick="eliminarPicagemRH(${r.linha}, ${JSON.stringify(r.nome)}, ${JSON.stringify(r.dia)})" title="Eliminar este registo diretamente na folha" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg w-6 h-6 inline-flex items-center justify-center font-bold transition-colors">✕</button>`
+              : '';
             return `
               <tr class="transition-colors ${cls}"${tituloDup}>
                 <td class="px-4 py-2.5 font-bold ${corTexto || (inc ? 'text-red-900' : (fds ? 'text-amber-900' : 'text-slate-900'))}">${r.nome}</td>
@@ -1359,6 +1388,7 @@
                 <td class="px-3 py-2.5 ${corTexto || 'text-slate-600'}">${r.horario || '—'}</td>
                 <td class="px-3 py-2.5 text-center font-mono ${corTexto}" style="text-align:center;">${minutosParaHHMM(r.trabalhadoMin)}</td>
                 <td class="px-4 py-2.5 text-right font-mono"><span class="${neg ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'} px-2 py-0.5 rounded font-bold">${(r.saldoMin > 0 ? '+' : '') + minutosParaHHMM(r.saldoMin)}</span></td>
+                <td class="px-3 py-2.5 text-center" style="text-align:center;">${btnEliminar}</td>
               </tr>`;
           }).join('');
 
@@ -1399,6 +1429,7 @@
                   <th class="px-3 py-3 text-left">Horário de Trabalho</th>
                   <th class="px-3 py-3 text-center" style="text-align:center;">Tempo Trabalhado</th>
                   <th class="px-4 py-3 text-right">Saldo do dia</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Ações</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-150 font-medium">${picLinhas}</tbody>

@@ -6,7 +6,9 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  return ContentService.createTextOutput(JSON.stringify(escreverAjuste(JSON.parse(e.postData.contents))))
+  var dados = JSON.parse(e.postData.contents);
+  var resultado = dados.acao === 'eliminar' ? eliminarLinha(dados) : escreverAjuste(dados);
+  return ContentService.createTextOutput(JSON.stringify(resultado))
                        .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -41,4 +43,43 @@ function escreverAjuste(dados) {
 
   sh.appendRow(linha);
   return { ok: true, colunasEncontradas: { iColab: iColab, iHorario: iHorario, iAdd: iAdd, iRem: iRem, iSaldo: iSaldo } };
+}
+
+function eliminarLinha(dados) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById("1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds");
+    var sh = ss.getSheetByName("Dados") || ss.getSheets()[0];
+    var numLinha = Number(dados.linha);
+
+    if (!numLinha || numLinha < 2 || numLinha > sh.getLastRow()) {
+      return { ok: false, erro: "Linha inválida: " + numLinha };
+    }
+
+    var cab = sh.getDataRange().getValues()[0];
+    function col(nome) {
+      var alvo = String(nome).trim().toLowerCase();
+      for (var i = 0; i < cab.length; i++)
+        if (String(cab[i]).trim().toLowerCase() === alvo) return i;
+      return -1;
+    }
+    var iColab = col("Colaborador");
+
+    // Proteção: confirma que a linha ainda corresponde ao colaborador esperado antes de apagar
+    // (evita apagar a linha errada se a folha tiver mudado entre a leitura e o clique)
+    if (dados.colaborador && iColab >= 0) {
+      var valores = sh.getRange(numLinha, 1, 1, cab.length).getValues()[0];
+      var colabFolha = String(valores[iColab] || "").trim().toLowerCase();
+      var colabEsperado = String(dados.colaborador).trim().toLowerCase();
+      if (colabFolha !== colabEsperado) {
+        return { ok: false, erro: "A linha " + numLinha + " já não corresponde a " + dados.colaborador + " — nada foi eliminado." };
+      }
+    }
+
+    sh.deleteRow(numLinha);
+    return { ok: true, linhaEliminada: numLinha };
+  } finally {
+    lock.releaseLock();
+  }
 }
