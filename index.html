@@ -6,7 +6,7 @@
   <title>Somengil - Portal de Férias e Horas</title>
 
   <!-- PWA: manifest, ícones e cor de tema -->
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
   <link rel="icon" href="https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png">
   <link rel="apple-touch-icon" href="https://res.cloudinary.com/dlkkjtgvy/image/upload/v1775600210/%C3%8DCONE_VERS%C3%83O_PRINCIPAL_qoqnjb.png">
@@ -621,6 +621,13 @@
       return fullName.split(' ')[0];
     }
 
+    // Escapar texto para uso seguro dentro de um atributo HTML (evita quebrar onclick="…")
+    function escapeAttr(s) {
+      return (s === null || s === undefined ? "" : String(s))
+        .replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+        .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
     // Normalizar nomes para comparação (sem acentos, minúsculas, espaços simples)
     function normNome(s) {
       return (s === null || s === undefined ? "" : String(s))
@@ -1118,7 +1125,10 @@
     }
 
     // Elimina um registo de picagem diretamente na folha "Dados" (Google Sheets), pela linha real
-    function eliminarPicagemRH(linha, nome, dia) {
+    function eliminarPicagemRH(btn) {
+      const linha = Number(btn.dataset.linha);
+      const nome = btn.dataset.nome;
+      const dia = btn.dataset.dia;
       if (!APPS_SCRIPT_URL) { triggerToast("Endpoint de gravação não configurado — não é possível eliminar."); return; }
       if (!confirm(`Eliminar o registo de ${nome} em ${dia}? Esta ação apaga a linha diretamente na folha e não pode ser desfeita.`)) return;
 
@@ -1374,11 +1384,11 @@
             const neg = (r.saldoMin || 0) < 0;
             const dup = picContagemPorDia[normNome(r.nome) + '|' + r.dia] > 1;
             const cls = inc ? 'bg-red-50 hover:bg-red-100' : (fds ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50');
-            const corTexto = dup ? 'text-orange-600 font-bold' : '';
+            const corTexto = dup ? 'text-orange-600 font-bold underline decoration-orange-500 decoration-2 underline-offset-2' : '';
             const tituloDup = dup ? ' title="Mais do que um registo neste dia para este colaborador"' : '';
             const podeEliminar = r.linha != null && APPS_SCRIPT_URL;
             const btnEliminar = podeEliminar
-              ? `<button onclick="eliminarPicagemRH(${r.linha}, ${JSON.stringify(r.nome)}, ${JSON.stringify(r.dia)})" title="Eliminar este registo diretamente na folha" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg w-6 h-6 inline-flex items-center justify-center font-bold transition-colors">✕</button>`
+              ? `<button data-linha="${r.linha}" data-nome="${escapeAttr(r.nome)}" data-dia="${escapeAttr(r.dia)}" onclick="eliminarPicagemRH(this)" title="Eliminar este registo diretamente na folha" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg w-6 h-6 inline-flex items-center justify-center font-bold transition-colors">✕</button>`
               : '';
             return `
               <tr class="transition-colors ${cls}"${tituloDup}>
@@ -1717,6 +1727,9 @@
 
         // Totais acumulados (todas as picagens do colaborador)
         const todos = getPicagensRecords();
+        // Deteta dias com mais do que um registo (para marcar a laranja)
+        const contagemPorDia = {};
+        todos.forEach(r => { contagemPorDia[r.data] = (contagemPorDia[r.data] || 0) + 1; });
         const totalSaldoMin = todos.reduce((s, r) => s + (r.saldoMin || 0), 0);
         const totalIncompletos = todos.reduce((n, r) => n + (r.incompleto ? 1 : 0), 0);
         const saldoColor = totalSaldoMin < 0 ? 'text-red-600' : 'text-emerald-700';
@@ -1784,16 +1797,19 @@
                     const linhaFds = normNome(rec.horario) === normNome("Horas Extra (fim de semana)");
                     const saldoNeg = (rec.saldoMin || 0) < 0;
                     const diaSem = rec._dt ? rec._dt.toLocaleDateString('pt-PT', { weekday: 'long' }) : '';
+                    const dup = contagemPorDia[rec.data] > 1;
                     const trClasse = linhaInc ? 'bg-red-50 hover:bg-red-100' : (linhaFds ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50');
+                    const corTexto = dup ? 'text-orange-600 font-bold underline decoration-orange-500 decoration-2 underline-offset-2' : '';
+                    const tituloDup = dup ? ' title="Tem mais do que um registo neste dia"' : '';
                     return `
-                      <tr class="transition-colors ${trClasse}">
+                      <tr class="transition-colors ${trClasse}"${tituloDup}>
                         <td class="px-4 py-3">
-                          <div class="font-bold ${linhaInc ? 'text-red-900' : (linhaFds ? 'text-amber-900' : 'text-slate-900')}">${rec.data}</div>
+                          <div class="font-bold ${corTexto || (linhaInc ? 'text-red-900' : (linhaFds ? 'text-amber-900' : 'text-slate-900'))}">${rec.data}</div>
                           <div class="text-[10px] text-slate-400 capitalize">${diaSem}${linhaInc ? ' · Incompleto' : ''}</div>
                         </td>
-                        <td class="px-3 py-3 text-slate-600">${rec.horario || '—'}</td>
+                        <td class="px-3 py-3 ${corTexto || 'text-slate-600'}">${rec.horario || '—'}</td>
                         <td class="px-3 py-3 text-center font-mono" style="text-align: center;">
-                          <span class="font-bold text-slate-800">${minutosParaHHMM(descontarPausasObrigatorias(rec.trabalhadoMin))}</span>
+                          <span class="font-bold ${corTexto || 'text-slate-800'}">${minutosParaHHMM(descontarPausasObrigatorias(rec.trabalhadoMin))}</span>
                         </td>
                         <td class="px-4 py-3 text-right font-mono">
                           <span class="${saldoNeg ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'} px-2 py-0.5 rounded font-bold">${fmtSaldo(rec.saldoMin || 0)}</span>
@@ -1893,7 +1909,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('Registo do Service Worker falhou:', err));
+        navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Registo do Service Worker falhou:', err));
       });
     }
 

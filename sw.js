@@ -1,10 +1,10 @@
 // Service Worker do Portal Somengil — App Shell caching e estratégia mais resiliente.
 // Mantemos requests externas (CDNs, Google Sheets) sem cache por origem.
-const CACHE_NAME = 'somengil-portal-v3';
+const CACHE_NAME = 'somengil-portal-v4';
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  './',
+  './index.html',
+  './manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -48,7 +48,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match('./index.html'))
     );
     return;
   }
