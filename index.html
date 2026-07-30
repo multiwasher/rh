@@ -808,7 +808,8 @@
           faltaMin: p.faltaMin,
           saldoMin: p.saldoMin || 0,
           incompleto: !!p.incompleto,
-          horario: p.horario || ''
+          horario: p.horario || '',
+          linha: p.linha
         }));
       }
       // Fallback (Modo Local): a partir dos dados simulados
@@ -1125,12 +1126,21 @@
     }
 
     // Elimina um registo de picagem diretamente na folha "Dados" (Google Sheets), pela linha real
-    function eliminarPicagemRH(btn) {
+    function eliminarPicagem(btn) {
       const linha = Number(btn.dataset.linha);
       const nome = btn.dataset.nome;
       const dia = btn.dataset.dia;
       if (!APPS_SCRIPT_URL) { triggerToast("Endpoint de gravação não configurado — não é possível eliminar."); return; }
       if (!confirm(`Eliminar o registo de ${nome} em ${dia}? Esta ação apaga a linha diretamente na folha e não pode ser desfeita.`)) return;
+
+      // Remoção otimista imediata da UI — não esperamos pela resposta do Apps Script
+      // (o pedido é "no-cors": não é possível ler o resultado real de qualquer forma)
+      const chave = normNome(nome);
+      if (picagensPorColab[chave]) {
+        picagensPorColab[chave] = picagensPorColab[chave].filter(p => p.linha !== linha);
+      }
+      reRenderAll();
+      triggerToast(`A eliminar registo de ${nome} (${dia})…`);
 
       fetch(APPS_SCRIPT_URL, {
         method: 'POST',
@@ -1138,16 +1148,8 @@
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ acao: 'eliminar', linha, colaborador: nome, dia })
       })
-      .then(() => {
-        // Remoção otimista da UI (o pedido é "no-cors": não é possível confirmar o resultado real)
-        const chave = normNome(nome);
-        if (picagensPorColab[chave]) {
-          picagensPorColab[chave] = picagensPorColab[chave].filter(p => p.linha !== linha);
-        }
-        renderRHPanel();
-        triggerToast(`Registo eliminado: ${nome} (${dia}). A confirmar na folha…`);
-      })
-      .catch(() => triggerToast("Falha ao contactar o Google Sheets para eliminar o registo."));
+      .then(() => triggerToast(`Registo de ${nome} (${dia}) eliminado na folha.`))
+      .catch(() => triggerToast(`Falha ao contactar o Google Sheets — o registo de ${nome} (${dia}) pode não ter sido eliminado na folha. Verifique e tente novamente.`));
     }
 
     function atualizarHoras() {
@@ -1388,7 +1390,7 @@
             const tituloDup = dup ? ' title="Mais do que um registo neste dia para este colaborador"' : '';
             const podeEliminar = r.linha != null && APPS_SCRIPT_URL;
             const btnEliminar = podeEliminar
-              ? `<button data-linha="${r.linha}" data-nome="${escapeAttr(r.nome)}" data-dia="${escapeAttr(r.dia)}" onclick="eliminarPicagemRH(this)" title="Eliminar este registo diretamente na folha" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg w-6 h-6 inline-flex items-center justify-center font-bold transition-colors">✕</button>`
+              ? `<button data-linha="${r.linha}" data-nome="${escapeAttr(r.nome)}" data-dia="${escapeAttr(r.dia)}" onclick="eliminarPicagem(this)" title="Eliminar este registo diretamente na folha" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg w-6 h-6 inline-flex items-center justify-center font-bold transition-colors">✕</button>`
               : '';
             return `
               <tr class="transition-colors ${cls}"${tituloDup}>
@@ -1787,11 +1789,12 @@
                     <th class="px-3 py-3 text-left">Horário de Trabalho</th>
                     <th class="px-3 py-3 text-center" style="text-align: center;">Tempo Trabalhado</th>
                     <th class="px-4 py-3 text-right">Saldo do dia</th>
+                    <th class="px-3 py-3 text-center" style="text-align: center;">Ações</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-150 font-medium">
                   ${visibleRecords.length === 0 ? `
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-slate-400 font-medium">Sem registos para esta semana.</td></tr>
+                    <tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 font-medium">Sem registos para esta semana.</td></tr>
                   ` : visibleRecords.map(rec => {
                     const linhaInc = rec.incompleto;
                     const linhaFds = normNome(rec.horario) === normNome("Horas Extra (fim de semana)");
@@ -1801,6 +1804,10 @@
                     const trClasse = linhaInc ? 'bg-red-50 hover:bg-red-100' : (linhaFds ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50');
                     const corTexto = dup ? 'text-orange-600 font-bold underline decoration-orange-500 decoration-2 underline-offset-2' : '';
                     const tituloDup = dup ? ' title="Tem mais do que um registo neste dia"' : '';
+                    const podeEliminar = rec.linha != null && APPS_SCRIPT_URL;
+                    const btnEliminar = podeEliminar
+                      ? `<button data-linha="${rec.linha}" data-nome="${escapeAttr(loggedUser.nome)}" data-dia="${escapeAttr(rec.data)}" onclick="eliminarPicagem(this)" title="Eliminar este registo diretamente na folha" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg w-6 h-6 inline-flex items-center justify-center font-bold transition-colors">✕</button>`
+                      : '';
                     return `
                       <tr class="transition-colors ${trClasse}"${tituloDup}>
                         <td class="px-4 py-3">
@@ -1814,6 +1821,7 @@
                         <td class="px-4 py-3 text-right font-mono">
                           <span class="${saldoNeg ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'} px-2 py-0.5 rounded font-bold">${fmtSaldo(rec.saldoMin || 0)}</span>
                         </td>
+                        <td class="px-3 py-3 text-center" style="text-align: center;">${btnEliminar}</td>
                       </tr>
                     `;
                   }).join('')}
