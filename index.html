@@ -206,6 +206,12 @@
     // Ajustes feitos nesta sessão de backoffice
     let ajustesSessao = [];
 
+    // Verifica se já foi feito algum ajuste hoje para este colaborador (nesta sessão)
+    function jaTemAjusteHojePara(nomeColaborador) {
+      const hoje = new Date().toDateString();
+      return ajustesSessao.some(a => a.colaborador === nomeColaborador && new Date(a.data).toDateString() === hoje);
+    }
+
     // Base de dados simulada de picagens diárias
     let attendanceRecords = {};
     // Horas compensadas manualmente dadas pelo escritório (RH)
@@ -583,6 +589,11 @@
       const h = parseInt(p[0], 10) || 0;
       const m = parseInt(p[1], 10) || 0;
       return (neg ? -1 : 1) * (h * 60 + m);
+    }
+
+    // Desconta as pausas obrigatórias (10min de manhã + 5min de tarde = 15min) ao tempo trabalhado
+    function descontarPausasObrigatorias(min) {
+      return Math.max(0, (min || 0) - 15);
     }
 
     // Converter minutos em "HH:MM"
@@ -985,6 +996,10 @@
       if (!colaborador) { triggerToast("Escolha um colaborador."); return; }
       if (horas === 0 && minutos === 0) { triggerToast("Indique um valor de horas/minutos."); return; }
 
+      if (jaTemAjusteHojePara(colaborador) && !confirm(`Já realizou um registo hoje para ${colaborador}. Deseja continuar?`)) {
+        return;
+      }
+
       const totalMin = (sinal === '-' ? -1 : 1) * (horas * 60 + minutos);
       const ajusteTxt = (totalMin > 0 ? '+' : '') + minutosParaHHMM(totalMin);
 
@@ -1020,6 +1035,11 @@
       const input = document.getElementById((tipo === 'rem' ? 'rem-' : 'add-') + id);
       let minutos = hhmmParaMinutos(input ? input.value.trim() : '');
       if (!minutos || minutos <= 0) { triggerToast("Indique um valor positivo, ex.: 1:30"); return; }
+
+      if (jaTemAjusteHojePara(colab.nome) && !confirm(`Já realizou um registo hoje para ${colab.nome}. Deseja continuar?`)) {
+        return;
+      }
+
       if (tipo === 'rem') minutos = -minutos; // retirar -> negativo (coluna "Ajuste Horas (retirar)")
 
       const ajusteTxt = (minutos > 0 ? '+' : '') + minutosParaHHMM(minutos);
@@ -1264,6 +1284,7 @@
       // --- Picagens de todos os colaboradores ---
       const picSetores = ["Todos", ...Array.from(new Set(colaboradores.map(c => c.setor).filter(Boolean)))];
       const picFiltrado = filtrarPicagens();
+      const picTotalTrabalhadoMin = picFiltrado.reduce((sum, r) => sum + (r.trabalhadoMin || 0), 0);
       const picLinhas = picFiltrado.length === 0
         ? `<tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">${isHorasConnected ? 'Sem picagens para este filtro.' : 'A carregar picagens…'}</td></tr>`
         : picFiltrado.map(r => {
@@ -1285,7 +1306,13 @@
       const picHTML = `
         <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div class="p-4 border-b border-slate-150 bg-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-1.5"><span>⏰</span> Picagens de todos <span class="text-[11px] font-medium text-slate-400">(${picFiltrado.length})</span></h3>
+            <div class="flex flex-wrap items-center gap-3">
+              <h3 class="font-bold text-slate-900 text-sm flex items-center gap-1.5"><span>⏰</span> Picagens de todos <span class="text-[11px] font-medium text-slate-400">(${picFiltrado.length})</span></h3>
+              <div class="bg-white p-2 px-3 rounded-xl border border-slate-200 text-center">
+                <span class="block text-[9px] uppercase font-bold text-slate-400">Horas Trabalhadas</span>
+                <span class="text-sm font-bold text-slate-900">${minutosParaHHMM(picTotalTrabalhadoMin)}</span>
+              </div>
+            </div>
             <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
               <input id="pic-search" type="text" placeholder="Colaborador…" value="${pSearch}" oninput="updatePicFilters()" class="block w-full md:w-48 px-3 py-1.5 text-xs border border-slate-300 rounded-lg" />
               <select id="pic-sector" onchange="updatePicFilters()" class="text-xs border border-slate-300 rounded-lg p-1.5 font-medium">
@@ -1672,7 +1699,7 @@
                         </td>
                         <td class="px-3 py-3 text-slate-600">${rec.horario || '—'}</td>
                         <td class="px-3 py-3 text-center font-mono" style="text-align: center;">
-                          <span class="font-bold text-slate-800">${minutosParaHHMM(rec.trabalhadoMin)}</span>
+                          <span class="font-bold text-slate-800">${minutosParaHHMM(descontarPausasObrigatorias(rec.trabalhadoMin))}</span>
                         </td>
                         <td class="px-4 py-3 text-right font-mono">
                           <span class="${saldoNeg ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'} px-2 py-0.5 rounded font-bold">${fmtSaldo(rec.saldoMin || 0)}</span>
