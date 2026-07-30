@@ -460,15 +460,53 @@
       return total;
     }
 
-    // Horas de trabalho esperadas (Portugal) no mês indicado pelos filtros pic-de / pic-ate.
+    // Mês de referência dos filtros pic-de / pic-ate.
     // Usa o mês/ano do campo "De" (ou "Até" se "De" estiver vazio; ou o mês atual se ambos vazios).
-    function horasEsperadasMesPicagens() {
+    function getMesReferenciaPicagens() {
       const refStr = pDe || pAte;
       const ref = refStr ? parseDataPT(refStr) : new Date();
-      const inicioMes = new Date(ref.getFullYear(), ref.getMonth(), 1);
-      const fimMes = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
-      const HORAS_POR_DIA = 8;
-      return diasUteisPortugal(inicioMes, fimMes) * HORAS_POR_DIA;
+      return {
+        inicioMes: new Date(ref.getFullYear(), ref.getMonth(), 1),
+        fimMes: new Date(ref.getFullYear(), ref.getMonth() + 1, 0)
+      };
+    }
+
+    // Horas de trabalho esperadas (Portugal) no mês de referência (sem descontar ausências)
+    function horasEsperadasMesPicagens() {
+      const { inicioMes, fimMes } = getMesReferenciaPicagens();
+      return diasUteisPortugal(inicioMes, fimMes) * 8;
+    }
+
+    // Dias úteis de ausência (Calendário de ausências) de um colaborador, sobrepostos ao intervalo [inicio, fim]
+    function diasAusenciaUteisNoIntervalo(nomeColab, inicio, fim) {
+      const chave = normNome(nomeColab);
+      let total = 0;
+      calendario.forEach(r => {
+        if (normNome(r.quem) !== chave) return;
+        const di = parseDataPT(r.inicio);
+        const df = parseDataPT(r.fim) || di;
+        if (!di) return;
+        const inicioIntersecao = di > inicio ? di : inicio;
+        const fimIntersecao = df < fim ? df : fim;
+        if (inicioIntersecao > fimIntersecao) return; // sem sobreposição com o intervalo
+        total += diasUteisPortugal(inicioIntersecao, fimIntersecao);
+      });
+      return total;
+    }
+
+    // Horas esperadas reais no mês de referência, por colaborador filtrado em "picFiltrado":
+    // dias úteis do mês menos os dias úteis de ausência (Calendário), × 8h — somado entre os colaboradores filtrados.
+    function horasEsperadasReaisPicagens(picFiltrado) {
+      const { inicioMes, fimMes } = getMesReferenciaPicagens();
+      const diasUteisMes = diasUteisPortugal(inicioMes, fimMes);
+      const nomes = Array.from(new Set(picFiltrado.map(r => r.nome)));
+      let totalMin = 0;
+      nomes.forEach(nome => {
+        const diasAusencia = diasAusenciaUteisNoIntervalo(nome, inicioMes, fimMes);
+        const diasReais = Math.max(0, diasUteisMes - diasAusencia);
+        totalMin += diasReais * 8 * 60;
+      });
+      return { min: totalMin, colaboradores: nomes.length };
     }
 
     async function ligarCalendario() {
@@ -1371,6 +1409,7 @@
       const picFiltrado = filtrarPicagens();
       const picTotalTrabalhadoMin = picFiltrado.reduce((sum, r) => sum + (r.trabalhadoMin || 0), 0);
       const picHorasEsperadasMin = horasEsperadasMesPicagens() * 60;
+      const picHorasEsperadasReais = horasEsperadasReaisPicagens(picFiltrado);
       // Deteta colaboradores com mais do que um registo no mesmo dia (dentro do filtro atual)
       const picContagemPorDia = {};
       picFiltrado.forEach(r => {
@@ -1416,6 +1455,10 @@
               <div class="bg-white p-2 px-3 rounded-xl border border-slate-200 text-center">
                 <span class="block text-[9px] uppercase font-bold text-slate-400">Horas Esperadas (mês)</span>
                 <span class="text-sm font-bold text-slate-900">${minutosParaHHMM(picHorasEsperadasMin)}</span>
+              </div>
+              <div class="bg-white p-2 px-3 rounded-xl border border-slate-200 text-center" title="Horas esperadas do mês descontando os dias de ausência registados no Calendário, para o(s) colaborador(es) do filtro de pesquisa">
+                <span class="block text-[9px] uppercase font-bold text-slate-400">Horas Esperadas (Real)</span>
+                <span class="text-sm font-bold text-slate-900">${minutosParaHHMM(picHorasEsperadasReais.min)}</span>
               </div>
             </div>
             <div class="flex flex-wrap items-center gap-2 w-full">
