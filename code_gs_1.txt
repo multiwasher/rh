@@ -1,0 +1,218 @@
+/**
+ * ============================================================
+ *  SOMENGIL — Web App do Portal de Férias e Horas
+ *  Ficheiro completo: substitui tudo o que tens no Code.gs.
+ *
+ *  Depois de colar: Implementar > Gerir implementações > editar (lápis)
+ *  > Versão: Nova versão > Implementar.
+ *  Sem nova versão, o URL continua a correr o código antigo.
+ *
+ *  Só há UMA alteração ao teu código original: o doPost passou a
+ *  desviar as ações "falta_*" para o separador "Faltas" ANTES de
+ *  chegarem ao escreverAjuste(). Tudo o resto está igual, linha a linha.
+ * ============================================================
+ */
+
+var ID_FOLHA = "1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds";
+var NOME_ABA_FALTAS = "Faltas";
+
+
+function doGet(e) {
+  if (e && e.parameter && e.parameter.teste) {
+    return ContentService.createTextOutput(JSON.stringify(escreverAjuste(e.parameter)));
+  }
+  return ContentService.createTextOutput("OK - endpoint ativo");
+}
+
+
+function doPost(e) {
+  var dados = JSON.parse(e.postData.contents);
+
+  var resultado;
+  if (dados.acao && String(dados.acao).indexOf('falta_') === 0) {
+    resultado = tratarFaltas(dados);              // módulo de pedidos de ausência
+  } else if (dados.acao === 'eliminar') {
+    resultado = eliminarLinha(dados);             // eliminar picagem (como sempre)
+  } else {
+    resultado = escreverAjuste(dados);            // ajuste de horas (como sempre)
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(resultado))
+                       .setMimeType(ContentService.MimeType.JSON);
+}
+
+
+/* ============================================================
+ *  O TEU CÓDIGO ORIGINAL — sem alterações
+ * ============================================================ */
+
+function escreverAjuste(dados) {
+  var ss = SpreadsheetApp.openById("1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds");
+  var sh = ss.getSheetByName("Dados") || ss.getSheets()[0];
+  var cab = sh.getDataRange().getValues()[0];
+
+  function col(nome) {                       // procura tolerante (trim + minúsculas)
+    var alvo = String(nome).trim().toLowerCase();
+    for (var i = 0; i < cab.length; i++)
+      if (String(cab[i]).trim().toLowerCase() === alvo) return i;
+    return -1;
+  }
+  var iColab   = col("Colaborador");
+  var iDia     = col("Dia Picagem (hoje)");
+  var iHorario = col("Horário de Trabalho");          // ← coluna E
+  var iAdd     = col("Ajuste Horas (adicionar)");
+  var iRem     = col("Ajuste Horas (retirar)");
+  var iSaldo   = col("SALDO");
+
+  var min = Number(dados.minutos) || 0, abs = Math.abs(min);
+  var val = ("0" + Math.floor(abs / 60)).slice(-2) + ":" + ("0" + (abs % 60)).slice(-2) + ":00";
+
+  var linha = new Array(cab.length).fill("");
+  if (iColab   >= 0) linha[iColab]   = dados.colaborador;
+  if (iDia     >= 0) linha[iDia]     = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy");
+  if (iHorario >= 0) linha[iHorario] = "Ajuste";      // ← preenche "Ajuste"
+  if (min >= 0 && iAdd >= 0) linha[iAdd] = val;
+  if (min <  0 && iRem >= 0) linha[iRem] = val;
+  if (iSaldo   >= 0) linha[iSaldo]   = (min < 0 ? "-" : "") + val;
+
+  sh.appendRow(linha);
+  return { ok: true, colunasEncontradas: { iColab: iColab, iHorario: iHorario, iAdd: iAdd, iRem: iRem, iSaldo: iSaldo } };
+}
+
+
+function eliminarLinha(dados) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById("1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds");
+    var sh = ss.getSheetByName("Dados") || ss.getSheets()[0];
+    var numLinha = Number(dados.linha);
+
+    if (!numLinha || numLinha < 2 || numLinha > sh.getLastRow()) {
+      return { ok: false, erro: "Linha inválida: " + numLinha };
+    }
+
+    var cab = sh.getDataRange().getValues()[0];
+    function col(nome) {
+      var alvo = String(nome).trim().toLowerCase();
+      for (var i = 0; i < cab.length; i++)
+        if (String(cab[i]).trim().toLowerCase() === alvo) return i;
+      return -1;
+    }
+    var iColab = col("Colaborador");
+
+    // Proteção: confirma que a linha ainda corresponde ao colaborador esperado antes de apagar
+    // (evita apagar a linha errada se a folha tiver mudado entre a leitura e o clique)
+    if (dados.colaborador && iColab >= 0) {
+      var valores = sh.getRange(numLinha, 1, 1, cab.length).getValues()[0];
+      var colabFolha = String(valores[iColab] || "").trim().toLowerCase();
+      var colabEsperado = String(dados.colaborador).trim().toLowerCase();
+      if (colabFolha !== colabEsperado) {
+        return { ok: false, erro: "A linha " + numLinha + " já não corresponde a " + dados.colaborador + " — nada foi eliminado." };
+      }
+    }
+
+    sh.deleteRow(numLinha);
+    return { ok: true, linhaEliminada: numLinha };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+/* ============================================================
+ *  NOVO — MÓDULO DE PEDIDOS DE AUSÊNCIA (separador "Faltas")
+ *  Cabeçalho A:H  Quem? | Setor | Início | Fim | Status | Motivo |
+ *                 Nº de Dias Pedidos | Dias Disponíveis
+ *  Extra    I:L  Tipo | Horas | Observações | Registado em
+ *  Só escreve neste separador. Nunca toca em "Dados" nem em "Equipa".
+ * ============================================================ */
+
+function tratarFaltas(dados) {
+  var ss = SpreadsheetApp.openById(ID_FOLHA);
+  var sh = ss.getSheetByName(NOME_ABA_FALTAS);
+  if (!sh) return { ok: false, erro: 'Não existe o separador "' + NOME_ABA_FALTAS + '".' };
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+
+    // ---------- novo pedido ----------
+    if (dados.acao === 'falta_nova') {
+      sh.appendRow([
+        dados.quem,
+        dados.setor,
+        dados.inicio,
+        dados.fim,
+        dados.status || 'Pendente',
+        dados.motivo,
+        Number(dados.dias) || 0,
+        Number(dados.disponiveis) || 0,
+        dados.tipo === 'horas' ? 'Horas' : 'Dias',
+        Number(dados.horas) || 0,
+        dados.obs || '',
+        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm")
+      ]);
+      return { ok: true, acao: dados.acao, linha: sh.getLastRow() };
+    }
+
+    var num = Number(dados.linha);
+    if (!num || num < 2 || num > sh.getLastRow()) {
+      return { ok: false, erro: "Linha inválida: " + num };
+    }
+
+    // Proteção: a linha tem de continuar a ser do colaborador esperado
+    // (as linhas mudam de número quando se apagam pedidos)
+    if (dados.quem) {
+      var quemFolha = String(sh.getRange(num, 1).getValue() || "").trim().toLowerCase();
+      var quemEsperado = String(dados.quem).trim().toLowerCase();
+      if (quemFolha !== quemEsperado) {
+        return { ok: false, erro: "A linha " + num + " já não corresponde a " + dados.quem + " — nada foi alterado." };
+      }
+    }
+
+    // ---------- editar Status ou Motivo ----------
+    if (dados.acao === 'falta_atualizar') {
+      var coluna = (dados.campo === 'Motivo') ? 6 : 5;        // F = Motivo | E = Status
+      sh.getRange(num, coluna).setValue(dados.valor);
+      if (dados.disponiveis !== undefined && dados.disponiveis !== null && dados.disponiveis !== '') {
+        sh.getRange(num, 8).setValue(Number(dados.disponiveis));   // H = Dias Disponíveis
+      }
+      return { ok: true, acao: dados.acao, linha: num, campo: dados.campo, valor: dados.valor };
+    }
+
+    // ---------- eliminar / anular pedido ----------
+    if (dados.acao === 'falta_eliminar') {
+      sh.deleteRow(num);
+      return { ok: true, acao: dados.acao, linhaEliminada: num };
+    }
+
+    return { ok: false, erro: "Ação desconhecida: " + dados.acao };
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+/**
+ * Teste rápido (correr no editor com ▶): cria uma linha de teste na aba
+ * "Faltas" para confirmar que o separador existe e há permissões de escrita.
+ * Depois apaga-a à mão.
+ */
+function testarFaltas() {
+  Logger.log(JSON.stringify(tratarFaltas({
+    acao: 'falta_nova',
+    quem: 'TESTE — apagar',
+    setor: 'Qualidade',
+    inicio: '01/01/2027',
+    fim: '02/01/2027',
+    status: 'Pendente',
+    motivo: 'Férias',
+    dias: 2,
+    disponiveis: 0,
+    tipo: 'dias',
+    horas: 0,
+    obs: 'linha de teste'
+  })));
+}

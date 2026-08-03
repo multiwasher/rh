@@ -202,7 +202,7 @@
 
     // Endpoint do Google Apps Script (Web App) para GRAVAR os ajustes na coluna "Ajuste Horas".
     // Deixar vazio -> modo de pré-visualização (mostra o que seria enviado, não grava).
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzgXxyWTbLrTKtFIMLmBcXbtBoTh66BRrIoFjwQmVsqZ2TMmR-NLjjgmZuvspZDTzZ32w/exec";
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYmWGS9vzZgJx6lxmfPDjQwbtAi6wycdNxCg-AunO5f3lP5UwYnbwekfVKqK5Ee9AHDg/exec";
     // Ajustes feitos nesta sessão de backoffice
     let ajustesSessao = [];
 
@@ -322,6 +322,671 @@
     let pSetor = "Todos";
     let pDe = "";
     let pAte = "";
+
+    // ===================================================================
+    // MÓDULO: PEDIDOS DE AUSÊNCIA  (separador "Faltas" da folha das horas)
+    // Cabeçalho da folha (A:H):
+    // Quem? | Setor | Início | Fim | Status | Motivo | Nº de Dias Pedidos | Dias Disponíveis
+    // Colunas extra opcionais (I:L): Tipo | Horas | Observações | Registado em
+    // ===================================================================
+    const FALTAS_SHEET_ID = '1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds';
+    const FALTAS_TAB = 'Faltas';
+    const HORAS_DIA_UTIL = 8; // horas de um dia de trabalho (converte horas -> fração de dia)
+
+    // Motivos de ausência. desconta:true -> os dias saem do saldo de férias.
+    const MOTIVOS_AUSENCIA = [
+      { nome: 'Férias', desconta: true },
+      { nome: 'Pessoal', desconta: true },
+      { nome: 'Doença', desconta: false },
+      { nome: 'Atestado médico', desconta: false },
+      { nome: 'Consulta médica', desconta: false },
+      { nome: 'Falecimento familiar', desconta: false },
+      { nome: 'Casamento', desconta: false },
+      { nome: 'Parentalidade', desconta: false },
+      { nome: 'Assistência à família', desconta: false },
+      { nome: 'Formação', desconta: false },
+      { nome: 'Outro', desconta: false }
+    ];
+    const STATUS_AUSENCIA = ['Pendente', 'Aprovado', 'Não Aprovado'];
+
+    let faltas = [];             // pedidos lidos do separador "Faltas"
+    let faltasCarregado = false;
+    let faltasErro = "";
+
+    // Filtros do painel RH
+    let fSearch = "", fSetor = "Todos", fMotivo = "Todos", fStatus = "Todos", fDe = "", fAte = "";
+    let rhFormAusencia = false;  // formulário do RH (registar em nome de) aberto/fechado
+
+    // Estado do formulário de novo pedido
+    let novoPedido = {
+      tipo: 'dias',      // 'dias' | 'horas'
+      motivo: 'Férias',
+      inicio: '', fim: '',            // pedido em dias
+      data: '', hIni: '09:00', hFim: '13:00', // pedido em horas
+      obs: '', colab: ''              // colab só usado pelo RH
+    };
+
+    // --- utilitários ---
+    function motivoDesconta(motivo) {
+      const m = MOTIVOS_AUSENCIA.find(x => normNome(x.nome) === normNome(motivo || ''));
+      return m ? m.desconta : false;
+    }
+
+    function paraNumero(v) {
+      if (v === null || v === undefined || v === '') return 0;
+      const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
+      return isNaN(n) ? 0 : n;
+    }
+
+    function numPT(n) {
+      const v = Math.round((Number(n) || 0) * 100) / 100;
+      return String(v).replace('.', ',');
+    }
+
+    function fmtDataPT(d) {
+      if (!d) return '';
+      const p = (x) => String(x).padStart(2, '0');
+      return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+    }
+
+    // --- leitura do separador "Faltas" ---
+    async function ligarFaltas() {
+      try {
+        const jsonObj = await gvizJsonp(FALTAS_SHEET_ID, FALTAS_TAB);
+        const cols = jsonObj.table.cols || [];
+        let rows = jsonObj.table.rows || [];
+
+        let hm = {};
+        cols.forEach((c, i) => { if (c && c.label) hm[normNome(c.label)] = i; });
+        if (Object.keys(hm).length === 0 && rows.length > 0) {
+          (rows[0].c || []).forEach((cell, i) => { if (cell && cell.v != null) hm[normNome(cell.v)] = i; });
+          rows = rows.slice(1);
+        }
+        const idx = (label, fb) => hm[normNome(label)] !== undefined ? hm[normNome(label)] : fb;
+        const iQuem = idx('Quem?', 0), iSetor = idx('Setor', 1), iIni = idx('Início', 2), iFim = idx('Fim', 3),
+              iStatus = idx('Status', 4), iMotivo = idx('Motivo', 5), iDias = idx('Nº de Dias Pedidos', 6),
+              iDisp = idx('Dias Disponíveis', 7), iTipo = idx('Tipo', 8), iHoras = idx('Horas', 9),
+              iObs = idx('Observações', 10);
+
+        const val = (row, i) => {
+          if (i == null || !row.c || !row.c[i]) return '';
+          const c = row.c[i];
+          const v = (c.f !== null && c.f !== undefined) ? c.f : c.v;
+          return (v === null || v === undefined) ? '' : String(v).trim();
+        };
+
+        faltas = rows.map((row, i) => {
+          if (!row.c) return null;
+          const quem = val(row, iQuem);
+          if (!quem || normNome(quem) === 'quem?') return null; // ignora cabeçalho repetido
+          const ini = val(row, iIni), fim = val(row, iFim);
+          const horas = paraNumero(val(row, iHoras));
+          const tipoCol = normNome(val(row, iTipo));
+          const tipo = (tipoCol === 'horas' || (!tipoCol && (horas > 0 || /\d{1,2}:\d{2}/.test(ini)))) ? 'horas' : 'dias';
+          return {
+            linha: i + 2,               // linha real na folha (1 = cabeçalho)
+            quem, setor: val(row, iSetor),
+            inicio: ini, fim: fim || ini,
+            status: val(row, iStatus) || 'Pendente',
+            motivo: val(row, iMotivo) || 'Outro',
+            dias: paraNumero(val(row, iDias)),
+            disponiveis: val(row, iDisp),
+            tipo, horas, obs: val(row, iObs),
+            _di: parseDataPT(ini),
+            _df: parseDataPT(fim) || parseDataPT(ini)
+          };
+        }).filter(Boolean);
+
+        faltasCarregado = true; faltasErro = "";
+        console.log('[Faltas] Pedidos carregados:', faltas.length);
+        reRenderAll();
+      } catch (e) {
+        faltasErro = (e && e.message) ? e.message : String(e);
+        faltasCarregado = true;
+        console.error('Falha ao carregar o separador "Faltas".', e);
+        reRenderAll();
+      }
+    }
+
+    function atualizarFaltas() { triggerToast("A reler os pedidos…"); ligarFaltas(); }
+
+    // --- saldo de férias de um colaborador ---
+    // base = "Dias disponíveis" da folha "Equipa"; a app desconta ainda os pedidos
+    // registados aqui (aprovados + pendentes) cujo motivo desconta férias.
+    function saldoFerias(nome) {
+      const c = colaboradores.find(x => normNome(x.nome) === normNome(nome));
+      const base = c ? paraNumero(c.diasDisponiveis) : 0;
+      let pendentes = 0, aprovados = 0;
+      faltas.forEach(f => {
+        if (normNome(f.quem) !== normNome(nome)) return;
+        if (!motivoDesconta(f.motivo)) return;
+        const st = normNome(f.status);
+        if (st === 'aprovado') aprovados += (f.dias || 0);
+        else if (st !== normNome('Não Aprovado')) pendentes += (f.dias || 0);
+      });
+      return {
+        totalAnual: c ? paraNumero(c.totalAnual) : 0,
+        usados: c ? paraNumero(c.diasUsados) : 0,
+        base,
+        aprovados: Math.round(aprovados * 100) / 100,
+        pendentes: Math.round(pendentes * 100) / 100,
+        disponiveis: Math.round((base - aprovados - pendentes) * 100) / 100
+      };
+    }
+
+    // --- cálculo do pedido em curso ---
+    function calcularPedido() {
+      const p = novoPedido;
+      if (p.tipo === 'horas') {
+        const min = hhmmParaMinutos(p.hFim) - hhmmParaMinutos(p.hIni);
+        const horas = min > 0 ? Math.round((min / 60) * 100) / 100 : 0;
+        return {
+          valido: !!p.data && horas > 0,
+          horas,
+          dias: Math.round((horas / HORAS_DIA_UTIL) * 100) / 100
+        };
+      }
+      // Pedido em dias: o início E o fim são obrigatórios, e contam os dois (inclusive)
+      if (!p.inicio || !p.fim) return { valido: false, dias: 0, horas: 0, incompleto: true };
+      const di = parseDataPT(p.inicio);
+      const df = parseDataPT(p.fim);
+      if (!di || !df || df < di) return { valido: false, dias: 0, horas: 0 };
+      const dias = diasUteisPortugal(di, df); // inclusive: conta o primeiro e o último dia
+      return { valido: dias > 0, dias, horas: 0, di, df };
+    }
+
+    function guardarCampoPedido(campo, valor) {
+      novoPedido[campo] = valor;
+      if (campo === 'tipo') { reRenderAll(); return; }
+      // o último dia nunca pode ficar antes do primeiro; se estiver vazio, iguala-se
+      if (campo === 'inicio') {
+        if (!novoPedido.fim || novoPedido.fim < valor) novoPedido.fim = valor;
+        const inpFim = document.getElementById('pedido-fim');
+        if (inpFim) { inpFim.value = novoPedido.fim; inpFim.min = valor; }
+      }
+      recalcPreviewPedido();
+    }
+
+    // Atualiza só o texto do resumo — não re-renderiza (não perde o foco dos campos)
+    function recalcPreviewPedido() {
+      const el = document.getElementById('pedido-preview');
+      if (!el) return;
+      const calc = calcularPedido();
+      const nome = (loggedUser && loggedUser.isRH) ? novoPedido.colab : (loggedUser ? loggedUser.nome : '');
+      const desconta = motivoDesconta(novoPedido.motivo);
+      if (!calc.valido) {
+        el.innerHTML = novoPedido.tipo === 'horas'
+          ? `<span class="text-slate-400">Indique o dia e o intervalo de horas da ausência.</span>`
+          : `<span class="text-slate-400">Indique o primeiro e o último dia de ausência (inclusive).</span>`;
+        return;
+      }
+      const intervalo = novoPedido.tipo === 'horas'
+        ? `${fmtDataPT(parseDataPT(novoPedido.data))} · ${novoPedido.hIni}–${novoPedido.hFim}`
+        : `${fmtDataPT(calc.di)} → ${fmtDataPT(calc.df)} (inclusive)`;
+      const saldo = nome ? saldoFerias(nome) : { disponiveis: 0 };
+      const depois = desconta ? Math.round((saldo.disponiveis - calc.dias) * 100) / 100 : saldo.disponiveis;
+      el.innerHTML = `
+        <span class="font-mono text-slate-600">${intervalo}</span> ·
+        <span class="font-bold text-slate-800">${numPT(calc.dias)} dia(s)</span>
+        ${novoPedido.tipo === 'horas' ? `<span class="text-slate-500">(${numPT(calc.horas)}h)</span>` : `<span class="text-slate-500">úteis, já sem fins de semana nem paragens da empresa</span>`}
+        ${nome ? ` · <span class="${desconta ? (depois < 0 ? 'text-red-700 font-bold' : 'text-slate-700 font-bold') : 'text-slate-500'}">
+            ${desconta ? `Dias disponíveis depois: ${numPT(depois)}` : 'Este motivo não desconta férias'}
+          </span>` : ''}
+      `;
+    }
+
+    // --- submeter novo pedido ---
+    function submeterPedidoAusencia() {
+      const nome = (loggedUser && loggedUser.isRH) ? novoPedido.colab : loggedUser.nome;
+      if (!nome) { triggerToast("Escolha o colaborador."); return; }
+
+      const calc = calcularPedido();
+      if (!calc.valido) {
+        triggerToast(novoPedido.tipo === 'horas'
+          ? "Indique o dia e um intervalo de horas válido."
+          : "Indique o primeiro e o último dia de ausência (o fim não pode ser antes do início).");
+        return;
+      }
+
+      const c = colaboradores.find(x => normNome(x.nome) === normNome(nome));
+      const desconta = motivoDesconta(novoPedido.motivo);
+      const saldo = saldoFerias(nome);
+      const dispDepois = desconta ? Math.round((saldo.disponiveis - calc.dias) * 100) / 100 : saldo.disponiveis;
+
+      if (desconta && dispDepois < 0 &&
+          !confirm(`Este pedido deixa o saldo de férias negativo (${numPT(dispDepois)} dias). Enviar mesmo assim?`)) return;
+
+      let inicioTxt, fimTxt;
+      if (novoPedido.tipo === 'horas') {
+        const d = fmtDataPT(parseDataPT(novoPedido.data));
+        inicioTxt = `${d} ${novoPedido.hIni}`;
+        fimTxt = `${d} ${novoPedido.hFim}`;
+      } else {
+        inicioTxt = fmtDataPT(parseDataPT(novoPedido.inicio));
+        fimTxt = fmtDataPT(parseDataPT(novoPedido.fim));
+      }
+
+      const payload = {
+        acao: 'falta_nova',
+        quem: c ? c.nome : nome,
+        setor: c ? c.setor : '',
+        inicio: inicioTxt,
+        fim: fimTxt,
+        status: 'Pendente',
+        motivo: novoPedido.motivo,
+        dias: calc.dias,
+        disponiveis: dispDepois,
+        tipo: novoPedido.tipo,
+        horas: calc.horas,
+        obs: novoPedido.obs,
+        data: new Date().toISOString()
+      };
+
+      // Reflexo imediato no ecrã (otimista). A releitura da folha (4s) traz a linha real.
+      faltas.push({
+        linha: null, quem: payload.quem, setor: payload.setor,
+        inicio: inicioTxt, fim: fimTxt, status: 'Pendente', motivo: payload.motivo,
+        dias: calc.dias, disponiveis: numPT(dispDepois), tipo: payload.tipo,
+        horas: calc.horas, obs: payload.obs,
+        _di: parseDataPT(inicioTxt), _df: parseDataPT(fimTxt)
+      });
+      novoPedido.obs = '';
+      reRenderAll();
+
+      if (!APPS_SCRIPT_URL) { triggerToast("Pedido registado (pré-visualização) — endpoint de gravação não configurado."); return; }
+
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      })
+      .then(() => { triggerToast("Pedido enviado para aprovação."); setTimeout(ligarFaltas, 4000); })
+      .catch(() => triggerToast("Falha ao contactar o Google Sheets — o pedido pode não ter sido gravado."));
+    }
+
+    // --- edição (RH): Status e Motivo ---
+    function atualizarFalta(linha, campo, valor) {
+      const f = faltas.find(x => x.linha === linha);
+      if (!f) return;
+      const antes = f[campo];
+      f[campo] = valor;
+      // recalcula o saldo do colaborador e grava-o também na coluna "Dias Disponíveis"
+      const novoDisp = saldoFerias(f.quem).disponiveis;
+      f.disponiveis = numPT(novoDisp);
+      reRenderAll();
+
+      if (!APPS_SCRIPT_URL) { triggerToast("Alteração apenas no ecrã — endpoint de gravação não configurado."); return; }
+
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          acao: 'falta_atualizar', linha,
+          campo: campo === 'status' ? 'Status' : 'Motivo',
+          valor, disponiveis: novoDisp, quem: f.quem
+        })
+      })
+      .then(() => triggerToast(`${campo === 'status' ? 'Status' : 'Motivo'} atualizado na folha.`))
+      .catch(() => { f[campo] = antes; reRenderAll(); triggerToast("Falha ao gravar a alteração."); });
+    }
+
+    // --- eliminar / anular pedido ---
+    function eliminarFalta(linha) {
+      const f = faltas.find(x => x.linha === linha);
+      if (!f) return;
+      if (!APPS_SCRIPT_URL) { triggerToast("Endpoint de gravação não configurado — não é possível eliminar."); return; }
+      if (!confirm(`Eliminar o pedido de ${f.quem} (${f.inicio} → ${f.fim})? A linha é apagada na folha.`)) return;
+
+      faltas = faltas.filter(x => x.linha !== linha);
+      reRenderAll();
+      triggerToast("A eliminar pedido…");
+
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ acao: 'falta_eliminar', linha, quem: f.quem })
+      })
+      .then(() => { triggerToast("Pedido eliminado."); setTimeout(ligarFaltas, 4000); })
+      .catch(() => triggerToast("Falha ao eliminar na folha — verifique e tente novamente."));
+    }
+
+    // --- filtros do RH ---
+    function filtrarFaltas() {
+      const q = normNome(fSearch);
+      const de = fDe ? parseDataPT(fDe) : null;
+      const ate = fAte ? parseDataPT(fAte) : null;
+      if (de) de.setHours(0, 0, 0, 0);
+      if (ate) ate.setHours(23, 59, 59, 999);
+      return faltas.filter(f => {
+        if (q && !normNome(`${f.quem} ${f.setor} ${f.motivo} ${f.obs}`).includes(q)) return false;
+        if (fSetor !== 'Todos' && f.setor !== fSetor) return false;
+        if (fMotivo !== 'Todos' && normNome(f.motivo) !== normNome(fMotivo)) return false;
+        if (fStatus !== 'Todos' && normNome(f.status) !== normNome(fStatus)) return false;
+        if (de || ate) {
+          const di = f._di, df = f._df || f._di;
+          if (!di) return false;
+          if (ate && di > ate) return false;
+          if (de && df < de) return false;
+        }
+        return true;
+      }).sort((a, b) => (b._di ? b._di.getTime() : 0) - (a._di ? a._di.getTime() : 0));
+    }
+
+    function updateFaltasFilters() {
+      const s = document.getElementById('flt-search');
+      const pos = s ? s.selectionStart : null;
+      fSearch = s ? s.value : '';
+      const sel = document.getElementById('flt-sector'); fSetor = sel ? sel.value : 'Todos';
+      const mot = document.getElementById('flt-motivo'); fMotivo = mot ? mot.value : 'Todos';
+      const st = document.getElementById('flt-status'); fStatus = st ? st.value : 'Todos';
+      const de = document.getElementById('flt-de'); fDe = de ? de.value : '';
+      const ate = document.getElementById('flt-ate'); fAte = ate ? ate.value : '';
+      renderRHPanel();
+      const novo = document.getElementById('flt-search');
+      if (novo && document.activeElement !== novo) {
+        novo.focus();
+        if (pos !== null) { try { novo.setSelectionRange(pos, pos); } catch (e) {} }
+      }
+    }
+
+    function limparFiltrosFaltas() {
+      fSearch = ""; fSetor = "Todos"; fMotivo = "Todos"; fStatus = "Todos"; fDe = ""; fAte = "";
+      renderRHPanel();
+    }
+
+    function toggleFormAusenciaRH() { rhFormAusencia = !rhFormAusencia; renderRHPanel(); }
+
+    // --- exportação ---
+    function exportarFaltasXLSX() {
+      if (typeof XLSX === 'undefined') { triggerToast("Biblioteca de exportação não carregou (precisa de internet)."); return; }
+      const lista = filtrarFaltas();
+      if (!lista.length) { triggerToast("Nada para exportar."); return; }
+      const dados = lista.map(f => ({
+        "Quem?": f.quem,
+        "Setor": f.setor,
+        "Início": f.inicio,
+        "Fim": f.fim,
+        "Status": f.status,
+        "Motivo": f.motivo,
+        "Tipo": f.tipo === 'horas' ? 'Horas' : 'Dias',
+        "Horas": f.tipo === 'horas' ? numPT(f.horas) : '',
+        "Nº de Dias Pedidos": numPT(f.dias),
+        "Dias Disponíveis": numPT(saldoFerias(f.quem).disponiveis),
+        "Observações": f.obs
+      }));
+      const ws = XLSX.utils.json_to_sheet(dados);
+      ws['!cols'] = [{ wch: 32 }, { wch: 14 }, { wch: 17 }, { wch: 17 }, { wch: 14 }, { wch: 18 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 28 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Pedidos de ausencia");
+      XLSX.writeFile(wb, `somengil_pedidos_ausencia_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      triggerToast(`Exportados ${lista.length} pedido(s) para XLSX.`);
+    }
+
+    // --- HTML: formulário de novo pedido (partilhado colaborador / RH) ---
+    function renderFormPedidoHTML(isRH) {
+      const p = novoPedido;
+      const motivos = MOTIVOS_AUSENCIA.map(m =>
+        `<option value="${escapeAttr(m.nome)}" ${normNome(p.motivo) === normNome(m.nome) ? 'selected' : ''}>${m.nome}${m.desconta ? ' (desconta férias)' : ''}</option>`).join('');
+      const colabs = [...colaboradores].filter(c => c.nome).sort((a, b) => a.nome.localeCompare(b.nome))
+        .map(c => `<option value="${escapeAttr(c.nome)}" ${normNome(p.colab) === normNome(c.nome) ? 'selected' : ''}>${c.nome}</option>`).join('');
+
+      const campoTipo = `
+        <div class="flex gap-2">
+          <button onclick="guardarCampoPedido('tipo','dias')" class="flex-1 px-3 py-2 rounded-lg text-xs font-black border transition-all ${p.tipo === 'dias' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}">📆 Dias</button>
+          <button onclick="guardarCampoPedido('tipo','horas')" class="flex-1 px-3 py-2 rounded-lg text-xs font-black border transition-all ${p.tipo === 'horas' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}">⏱️ Horas</button>
+        </div>`;
+
+      const camposData = p.tipo === 'horas' ? `
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Dia da ausência</label>
+          <input type="date" value="${p.data}" onchange="guardarCampoPedido('data', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Das</label>
+          <input type="time" value="${p.hIni}" onchange="guardarCampoPedido('hIni', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Às</label>
+          <input type="time" value="${p.hFim}" onchange="guardarCampoPedido('hFim', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        </div>` : `
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">1.º dia de ausência</label>
+          <input id="pedido-inicio" type="date" value="${p.inicio}" onchange="guardarCampoPedido('inicio', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Último dia (inclusive)</label>
+          <input id="pedido-fim" type="date" value="${p.fim}" min="${p.inicio}" onchange="guardarCampoPedido('fim', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+        </div>`;
+
+      return `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-150 bg-slate-50">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-1.5"><span>📝</span> Novo pedido de ausência</h3>
+            <p class="text-[11px] text-slate-500 mt-0.5">O pedido fica com o estado <strong>Pendente</strong> até o escritório (RH) aprovar.</p>
+          </div>
+          <div class="p-4 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-${p.tipo === 'horas' ? '5' : '4'} gap-3 items-end">
+              ${isRH ? `
+              <div class="md:col-span-2">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Colaborador</label>
+                <select onchange="guardarCampoPedido('colab', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                  <option value="">— escolher —</option>
+                  ${colabs}
+                </select>
+              </div>` : ''}
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Tipo</label>
+                ${campoTipo}
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Motivo</label>
+                <select onchange="guardarCampoPedido('motivo', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">${motivos}</select>
+              </div>
+              ${camposData}
+              <div class="md:col-span-2">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Observações (opcional)</label>
+                <input type="text" value="${escapeAttr(p.obs)}" oninput="novoPedido.obs = this.value" placeholder="ex.: entrego atestado na 2ª feira" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
+              <div id="pedido-preview" class="text-xs"><span class="text-slate-400">Preencha as datas para ver o resumo do pedido.</span></div>
+              <button onclick="submeterPedidoAusencia()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-5 py-2.5 rounded-xl shadow-sm shrink-0">Enviar pedido</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // --- HTML: tabela de pedidos ---
+    function badgeStatus(status) {
+      const st = normNome(status);
+      const cls = st === 'aprovado' ? 'bg-emerald-100 text-emerald-800'
+        : st === normNome('Não Aprovado') ? 'bg-red-100 text-red-800'
+        : 'bg-amber-100 text-amber-800';
+      return `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${cls}">${status || 'Pendente'}</span>`;
+    }
+
+    function renderFaltasRHHTML() {
+      const setores = ["Todos", ...Array.from(new Set(colaboradores.map(c => c.setor).filter(Boolean)))];
+      const motivosOpt = ["Todos", ...MOTIVOS_AUSENCIA.map(m => m.nome)];
+      const statusOpt = ["Todos", ...STATUS_AUSENCIA];
+      const lista = filtrarFaltas();
+
+      const nPend = faltas.filter(f => normNome(f.status) !== 'aprovado' && normNome(f.status) !== normNome('Não Aprovado')).length;
+      const nApr = faltas.filter(f => normNome(f.status) === 'aprovado').length;
+      const diasFiltrados = Math.round(lista.reduce((s, f) => s + (f.dias || 0), 0) * 100) / 100;
+
+      const linhas = lista.length === 0
+        ? `<tr><td colspan="10" class="px-4 py-6 text-center text-slate-400">${faltasCarregado ? (faltasErro ? `Não foi possível ler o separador "Faltas": ${escapeAttr(faltasErro)}` : 'Sem pedidos para este filtro.') : 'A carregar pedidos…'}</td></tr>`
+        : lista.map(f => {
+            const editavel = f.linha != null;
+            const selStatus = editavel
+              ? `<select onchange="atualizarFalta(${f.linha}, 'status', this.value)" class="text-[11px] border border-slate-300 rounded-lg px-1.5 py-1 bg-white font-bold">
+                   ${STATUS_AUSENCIA.map(s => `<option value="${s}" ${normNome(f.status) === normNome(s) ? 'selected' : ''}>${s}</option>`).join('')}
+                 </select>`
+              : `${badgeStatus(f.status)} <span class="text-[9px] text-slate-400">a sincronizar…</span>`;
+            const selMotivo = editavel
+              ? `<select onchange="atualizarFalta(${f.linha}, 'motivo', this.value)" class="text-[11px] border border-slate-300 rounded-lg px-1.5 py-1 bg-white">
+                   ${MOTIVOS_AUSENCIA.map(m => `<option value="${escapeAttr(m.nome)}" ${normNome(f.motivo) === normNome(m.nome) ? 'selected' : ''}>${m.nome}</option>`).join('')}
+                 </select>`
+              : escapeAttr(f.motivo);
+            const disp = saldoFerias(f.quem).disponiveis;
+            return `
+              <tr class="hover:bg-slate-50">
+                <td class="px-4 py-2.5 font-bold text-slate-800">${f.quem}</td>
+                <td class="px-3 py-2.5 text-slate-500">${f.setor}</td>
+                <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${f.inicio}</td>
+                <td class="px-3 py-2.5 text-center font-mono" style="text-align:center;">${f.fim}</td>
+                <td class="px-3 py-2.5 text-center" style="text-align:center;">${selStatus}</td>
+                <td class="px-3 py-2.5">${selMotivo}</td>
+                <td class="px-3 py-2.5 text-center font-mono font-bold" style="text-align:center;">${numPT(f.dias)}${f.tipo === 'horas' ? `<span class="block text-[9px] font-normal text-slate-400">${numPT(f.horas)}h</span>` : ''}</td>
+                <td class="px-3 py-2.5 text-center" style="text-align:center;" title="Saldo atual do colaborador (registado na folha: ${escapeAttr(f.disponiveis)})">
+                  <span class="inline-block px-2 py-0.5 rounded-full font-bold text-[11px] ${disp < 0 ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-800'}">${numPT(disp)}</span>
+                </td>
+                <td class="px-3 py-2.5 text-slate-500">${f.obs || ''}</td>
+                <td class="px-3 py-2.5 text-center" style="text-align:center;">
+                  ${editavel ? `<button onclick="eliminarFalta(${f.linha})" title="Eliminar este pedido na folha" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg w-6 h-6 inline-flex items-center justify-center font-bold transition-colors">✕</button>` : ''}
+                </td>
+              </tr>`;
+          }).join('');
+
+      return `
+        ${rhFormAusencia ? renderFormPedidoHTML(true) : ''}
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-150 bg-slate-50 flex flex-col gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+              <h3 class="font-bold text-slate-900 text-sm flex items-center gap-1.5"><span>🗓️</span> Pedidos de ausência <span class="text-[11px] font-medium text-slate-400">(${lista.length} de ${faltas.length})</span></h3>
+              <div class="bg-white p-2 px-3 rounded-xl border border-slate-200 text-center">
+                <span class="block text-[9px] uppercase font-bold text-slate-400">Pendentes</span>
+                <span class="text-sm font-bold text-amber-700">${nPend}</span>
+              </div>
+              <div class="bg-white p-2 px-3 rounded-xl border border-slate-200 text-center">
+                <span class="block text-[9px] uppercase font-bold text-slate-400">Aprovados</span>
+                <span class="text-sm font-bold text-emerald-700">${nApr}</span>
+              </div>
+              <div class="bg-white p-2 px-3 rounded-xl border border-slate-200 text-center">
+                <span class="block text-[9px] uppercase font-bold text-slate-400">Dias no filtro</span>
+                <span class="text-sm font-bold text-slate-900">${numPT(diasFiltrados)}</span>
+              </div>
+              <div class="flex gap-2 ml-auto">
+                <button onclick="toggleFormAusenciaRH()" class="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-3 py-1.5">${rhFormAusencia ? '✕ Fechar formulário' : '＋ Registar pedido'}</button>
+                <button onclick="atualizarFaltas()" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5">↻ Atualizar</button>
+                <button onclick="exportarFaltasXLSX()" class="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-3 py-1.5">⬇ Exportar</button>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 w-full">
+              <input id="flt-search" type="text" placeholder="Pessoa, setor, motivo, obs…" value="${escapeAttr(fSearch)}" oninput="updateFaltasFilters()" class="block w-full md:w-52 px-3 py-1.5 text-xs border border-slate-300 rounded-lg" />
+              <select id="flt-sector" onchange="updateFaltasFilters()" class="text-xs border border-slate-300 rounded-lg p-1.5 font-medium">
+                ${setores.map(s => `<option value="${escapeAttr(s)}" ${fSetor === s ? 'selected' : ''}>${s === 'Todos' ? 'Setor: todos' : s}</option>`).join('')}
+              </select>
+              <select id="flt-motivo" onchange="updateFaltasFilters()" class="text-xs border border-slate-300 rounded-lg p-1.5 font-medium">
+                ${motivosOpt.map(s => `<option value="${escapeAttr(s)}" ${fMotivo === s ? 'selected' : ''}>${s === 'Todos' ? 'Motivo: todos' : s}</option>`).join('')}
+              </select>
+              <select id="flt-status" onchange="updateFaltasFilters()" class="text-xs border border-slate-300 rounded-lg p-1.5 font-medium">
+                ${statusOpt.map(s => `<option value="${escapeAttr(s)}" ${fStatus === s ? 'selected' : ''}>${s === 'Todos' ? 'Status: todos' : s}</option>`).join('')}
+              </select>
+              <label class="text-[11px] font-bold text-slate-400">De</label>
+              <input id="flt-de" type="date" value="${fDe}" onchange="updateFaltasFilters()" class="text-xs border border-slate-300 rounded-lg p-1" />
+              <label class="text-[11px] font-bold text-slate-400">Até</label>
+              <input id="flt-ate" type="date" value="${fAte}" onchange="updateFaltasFilters()" class="text-xs border border-slate-300 rounded-lg p-1" />
+              ${(fSearch || fDe || fAte || fSetor !== 'Todos' || fMotivo !== 'Todos' || fStatus !== 'Todos') ? `<button onclick="limparFiltrosFaltas()" class="text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg px-2 py-1">✕ limpar filtros</button>` : ''}
+            </div>
+          </div>
+          <div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
+            <table class="min-w-full divide-y divide-slate-150 text-xs">
+              <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider sticky top-0">
+                <tr>
+                  <th class="px-4 py-3 text-left">Quem?</th>
+                  <th class="px-3 py-3 text-left">Setor</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Início</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Fim</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Status</th>
+                  <th class="px-3 py-3 text-left">Motivo</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Nº de Dias Pedidos</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Dias Disponíveis</th>
+                  <th class="px-3 py-3 text-left">Observações</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Ações</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-150 font-medium">${linhas}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    // --- HTML: painel do colaborador ---
+    function renderAusenciasColabHTML() {
+      const meus = faltas
+        .filter(f => normNome(f.quem) === normNome(loggedUser.nome))
+        .sort((a, b) => (b._di ? b._di.getTime() : 0) - (a._di ? a._di.getTime() : 0));
+      const s = saldoFerias(loggedUser.nome);
+
+      const linhas = meus.length === 0
+        ? `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400 font-medium">${faltasCarregado ? 'Ainda não tem pedidos registados.' : 'A carregar…'}</td></tr>`
+        : meus.map(f => {
+            const pendente = normNome(f.status) !== 'aprovado' && normNome(f.status) !== normNome('Não Aprovado');
+            return `
+              <tr class="hover:bg-slate-50">
+                <td class="px-4 py-3 text-center font-mono" style="text-align:center;">${f.inicio}</td>
+                <td class="px-3 py-3 text-center font-mono" style="text-align:center;">${f.fim}</td>
+                <td class="px-3 py-3">${f.motivo}${motivoDesconta(f.motivo) ? '' : `<span class="block text-[9px] text-slate-400">não desconta férias</span>`}</td>
+                <td class="px-3 py-3 text-center font-mono font-bold" style="text-align:center;">${numPT(f.dias)}${f.tipo === 'horas' ? `<span class="block text-[9px] font-normal text-slate-400">${numPT(f.horas)}h</span>` : ''}</td>
+                <td class="px-3 py-3 text-center" style="text-align:center;">${badgeStatus(f.status)}</td>
+                <td class="px-3 py-3 text-slate-500">${f.obs || ''}</td>
+                <td class="px-3 py-3 text-center" style="text-align:center;">
+                  ${(pendente && f.linha != null) ? `<button onclick="eliminarFalta(${f.linha})" title="Anular este pedido" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg px-2 h-6 inline-flex items-center justify-center font-bold text-[10px] transition-colors">Anular</button>` : ''}
+                </td>
+              </tr>`;
+          }).join('');
+
+      return `
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+            <span class="block text-xs font-bold text-slate-400 uppercase">Férias do ano</span>
+            <span class="block text-2xl font-bold text-slate-900 mt-1">${numPT(s.totalAnual)} dias</span>
+          </div>
+          <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+            <span class="block text-xs font-bold text-slate-400 uppercase">Já gozadas</span>
+            <span class="block text-2xl font-bold text-amber-600 mt-1">${numPT(s.usados)} dias</span>
+          </div>
+          <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+            <span class="block text-xs font-bold text-slate-400 uppercase">Pedidos por aprovar</span>
+            <span class="block text-2xl font-bold text-slate-700 mt-1">${numPT(s.pendentes)} dias</span>
+          </div>
+          <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
+            <span class="block text-xs font-bold text-slate-400 uppercase">Dias disponíveis</span>
+            <span class="block text-2xl font-bold mt-1 ${s.disponiveis < 0 ? 'text-red-600' : 'text-blue-600'}">${numPT(s.disponiveis)} dias</span>
+          </div>
+        </div>
+
+        ${renderFormPedidoHTML(false)}
+
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-150 bg-slate-50 flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-1.5"><span>📋</span> Os meus pedidos <span class="text-[11px] font-medium text-slate-400">(${meus.length})</span></h3>
+            <button onclick="atualizarFaltas()" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5">↻ Atualizar</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-150 text-xs">
+              <thead class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider">
+                <tr>
+                  <th class="px-4 py-3 text-center" style="text-align:center;">Início</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Fim</th>
+                  <th class="px-3 py-3 text-left">Motivo</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Dias</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Status</th>
+                  <th class="px-3 py-3 text-left">Observações</th>
+                  <th class="px-3 py-3 text-center" style="text-align:center;">Ações</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-150 font-medium">${linhas}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-xs text-slate-600">
+          <span class="font-bold">Como é contado:</span> um pedido é <strong>ou</strong> em dias <strong>ou</strong> em horas. Em dias, indica o primeiro e o último dia de ausência — contam os dois (inclusive) e só os dias úteis (sem fins de semana nem dias de paragem da empresa). Nos pedidos por horas, ${HORAS_DIA_UTIL}h equivalem a 1 dia. Só os motivos marcados como "desconta férias" saem dos seus dias disponíveis.
+        </div>`;
+    }
 
     // Junta as picagens de todos os colaboradores numa lista (com nome e setor)
     function todasPicagens() {
@@ -1310,6 +1975,7 @@
         renderColabPanel();
       }
       renderHorasStatus();
+      recalcPreviewPedido();
     }
 
     function renderHeader() {
@@ -1443,6 +2109,8 @@
               </tr>`;
           }).join('');
 
+      const faltasHTML = renderFaltasRHHTML();
+
       const picHTML = `
         <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div class="p-4 border-b border-slate-150 bg-slate-50 flex flex-col gap-3">
@@ -1520,10 +2188,11 @@
         <div class="bg-white p-2 border border-slate-200 rounded-xl shadow-sm flex flex-wrap gap-2">
           <button onclick="setRhView('colaboradores')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'colaboradores' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">👥 Colaboradores</button>
           <button onclick="setRhView('picagens')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'picagens' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">⏰ Picagens</button>
+          <button onclick="setRhView('ausencias')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'ausencias' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">🗓️ Pedidos de ausência (${faltas.length})</button>
           <button onclick="setRhView('calendario')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'calendario' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">📅 Calendário de ausências (${calendario.length})</button>
         </div>
 
-        ${rhView === 'calendario' ? calHTML : rhView === 'picagens' ? picHTML : `
+        ${rhView === 'ausencias' ? faltasHTML : rhView === 'calendario' ? calHTML : rhView === 'picagens' ? picHTML : `
         <div class="bg-white p-4 border border-slate-200 rounded-xl shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
           <input 
             id="rh-search"
@@ -1621,7 +2290,9 @@
 
       let innerContent = "";
 
-      if (activeTab === "dashboard") {
+      if (activeTab === "ausencias") {
+        innerContent = renderAusenciasColabHTML();
+      } else if (activeTab === "dashboard") {
         innerContent = `
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
@@ -1902,6 +2573,12 @@
             >
               ⏰ Picagens
             </button>
+            <button
+              onclick="setTab('ausencias')"
+              class="px-5 py-2.5 rounded-xl text-xs font-black border transition-all ${activeTab === 'ausencias' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'}"
+            >
+              🗓️ Ausências
+            </button>
           </div>
         </div>
 
@@ -1974,6 +2651,7 @@
       ligarCalendario();    // carrega o separador "Calendário" (ausências/férias)
       ligarHorasSheets();   // se a folha responder, substitui o exemplo pelos dados reais
       ligarParagens();      // carrega o separador "Paragens" (dias de fecho/feriados da empresa)
+      ligarFaltas();        // carrega o separador "Faltas" (pedidos de ausência)
     });
   </script>
 
