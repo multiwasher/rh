@@ -202,7 +202,7 @@
 
     // Endpoint do Google Apps Script (Web App) para GRAVAR os ajustes na coluna "Ajuste Horas".
     // Deixar vazio -> modo de pré-visualização (mostra o que seria enviado, não grava).
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYmWGS9vzZgJx6lxmfPDjQwbtAi6wycdNxCg-AunO5f3lP5UwYnbwekfVKqK5Ee9AHDg/exec";
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwxgtsXi85-IgIf6xjSr6nS4syuuUtdLYL4qxCw7DAhcq_yH3QcnFDHPseMoNedBtmB2A/exec";
     // Ajustes feitos nesta sessão de backoffice
     let ajustesSessao = [];
 
@@ -285,14 +285,19 @@
         const rows = jsonObj.table.rows || [];
         const val = (cell) => cell ? (cell.f !== null && cell.f !== undefined ? cell.f : cell.v) : null;
         const mapa = {};
+        const dias = {};
         rows.forEach(row => {
           if (!row.c) return;
           const nome = val(row.c[0]);   // A: Colaborador
           const pw   = val(row.c[1]);   // B: Password
           if (!nome || normNome(nome) === 'colaborador') return;
           mapa[normNome(nome)] = (pw === null || pw === undefined) ? '' : String(pw).trim();
+          // D: Dias disponíveis após fecho Somengil — fonte de verdade do saldo de férias
+          const d = val(row.c[3]);
+          if (d !== null && d !== undefined && String(d).trim() !== '') dias[normNome(nome)] = paraNumero(d);
         });
         credenciais = mapa;
+        diasDispEquipa = dias;
         aplicarCredenciais();
         console.log('[Login] Credenciais carregadas:', Object.keys(credenciais).length);
         reRenderAll();
@@ -350,6 +355,10 @@
     const STATUS_AUSENCIA = ['Pendente', 'Aprovado', 'Não Aprovado'];
 
     let faltas = [];             // pedidos lidos do separador "Faltas"
+    // Saldo de férias por colaborador, lido da coluna D da aba "Equipa"
+    // ("Dias disponíveis após fecho Somengil"). É esta coluna que o Apps Script
+    // desconta quando um pedido de DIAS é aprovado.
+    let diasDispEquipa = {};
     let faltasCarregado = false;
     let faltasErro = "";
 
@@ -448,18 +457,26 @@
       }
     }
 
-    function atualizarFaltas() { triggerToast("A reler os pedidos…"); ligarFaltas(); }
+    function atualizarFaltas() { triggerToast("A reler os pedidos…"); recarregarFaltas(); }
+
+    // Relê os pedidos E o saldo da aba "Equipa" (a coluna D é alterada pelo Apps Script)
+    function recarregarFaltas() { ligarFaltas(); ligarCredenciais(); }
 
     // --- saldo de férias de um colaborador ---
-    // base = "Dias disponíveis" da folha "Equipa"; a app desconta ainda os pedidos
-    // registados aqui (aprovados + pendentes) cujo motivo desconta férias.
+    // base = coluna D da aba "Equipa" ("Dias disponíveis após fecho Somengil").
+    // Os pedidos APROVADOS já estão descontados nessa coluna (fá-lo o Apps Script),
+    // por isso aqui só se reservam os que ainda estão pendentes.
+    // Só pedidos em DIAS mexem no saldo; os de horas ficam registados mas não descontam.
     function saldoFerias(nome) {
-      const c = colaboradores.find(x => normNome(x.nome) === normNome(nome));
-      const base = c ? paraNumero(c.diasDisponiveis) : 0;
+      const chave = normNome(nome);
+      const c = colaboradores.find(x => normNome(x.nome) === chave);
+      const base = (diasDispEquipa[chave] !== undefined)
+        ? diasDispEquipa[chave]
+        : (c ? paraNumero(c.diasDisponiveis) : 0);   // reserva, se a aba Equipa não responder
       let pendentes = 0, aprovados = 0;
       faltas.forEach(f => {
-        if (normNome(f.quem) !== normNome(nome)) return;
-        if (!motivoDesconta(f.motivo)) return;
+        if (normNome(f.quem) !== chave) return;
+        if (f.tipo === 'horas' || !motivoDesconta(f.motivo)) return;
         const st = normNome(f.status);
         if (st === 'aprovado') aprovados += (f.dias || 0);
         else if (st !== normNome('Não Aprovado')) pendentes += (f.dias || 0);
@@ -470,7 +487,7 @@
         base,
         aprovados: Math.round(aprovados * 100) / 100,
         pendentes: Math.round(pendentes * 100) / 100,
-        disponiveis: Math.round((base - aprovados - pendentes) * 100) / 100
+        disponiveis: Math.round((base - pendentes) * 100) / 100
       };
     }
 
@@ -524,13 +541,16 @@
         ? `${fmtDataPT(parseDataPT(novoPedido.data))} · ${novoPedido.hIni}–${novoPedido.hFim}`
         : `${fmtDataPT(calc.di)} → ${fmtDataPT(calc.df)} (inclusive)`;
       const saldo = nome ? saldoFerias(nome) : { disponiveis: 0 };
-      const depois = desconta ? Math.round((saldo.disponiveis - calc.dias) * 100) / 100 : saldo.disponiveis;
+      const depois = (desconta && novoPedido.tipo !== 'horas')
+        ? Math.round((saldo.disponiveis - calc.dias) * 100) / 100
+        : saldo.disponiveis;
       el.innerHTML = `
         <span class="font-mono text-slate-600">${intervalo}</span> ·
         <span class="font-bold text-slate-800">${numPT(calc.dias)} dia(s)</span>
         ${novoPedido.tipo === 'horas' ? `<span class="text-slate-500">(${numPT(calc.horas)}h)</span>` : `<span class="text-slate-500">úteis, já sem fins de semana nem paragens da empresa</span>`}
-        ${nome ? ` · <span class="${desconta ? (depois < 0 ? 'text-red-700 font-bold' : 'text-slate-700 font-bold') : 'text-slate-500'}">
-            ${desconta ? `Dias disponíveis depois: ${numPT(depois)}` : 'Este motivo não desconta férias'}
+        ${nome ? ` · <span class="${(desconta && novoPedido.tipo !== 'horas') ? (depois < 0 ? 'text-red-700 font-bold' : 'text-slate-700 font-bold') : 'text-slate-500'}">
+            ${novoPedido.tipo === 'horas' ? 'Pedidos em horas não descontam dias de férias'
+              : (desconta ? `Dias disponíveis depois: ${numPT(depois)}` : 'Este motivo não desconta férias')}
           </span>` : ''}
       `;
     }
@@ -549,7 +569,7 @@
       }
 
       const c = colaboradores.find(x => normNome(x.nome) === normNome(nome));
-      const desconta = motivoDesconta(novoPedido.motivo);
+      const desconta = motivoDesconta(novoPedido.motivo) && novoPedido.tipo !== 'horas';
       const saldo = saldoFerias(nome);
       const dispDepois = desconta ? Math.round((saldo.disponiveis - calc.dias) * 100) / 100 : saldo.disponiveis;
 
@@ -600,7 +620,7 @@
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       })
-      .then(() => { triggerToast("Pedido enviado para aprovação."); setTimeout(ligarFaltas, 4000); })
+      .then(() => { triggerToast("Pedido enviado para aprovação."); setTimeout(recarregarFaltas, 4000); })
       .catch(() => triggerToast("Falha ao contactar o Google Sheets — o pedido pode não ter sido gravado."));
     }
 
@@ -610,9 +630,6 @@
       if (!f) return;
       const antes = f[campo];
       f[campo] = valor;
-      // recalcula o saldo do colaborador e grava-o também na coluna "Dias Disponíveis"
-      const novoDisp = saldoFerias(f.quem).disponiveis;
-      f.disponiveis = numPT(novoDisp);
       reRenderAll();
 
       if (!APPS_SCRIPT_URL) { triggerToast("Alteração apenas no ecrã — endpoint de gravação não configurado."); return; }
@@ -623,10 +640,10 @@
         body: JSON.stringify({
           acao: 'falta_atualizar', linha,
           campo: campo === 'status' ? 'Status' : 'Motivo',
-          valor, disponiveis: novoDisp, quem: f.quem
+          valor, quem: f.quem
         })
       })
-      .then(() => triggerToast(`${campo === 'status' ? 'Status' : 'Motivo'} atualizado na folha.`))
+      .then(() => { triggerToast(`${campo === 'status' ? 'Status' : 'Motivo'} atualizado na folha.`); setTimeout(recarregarFaltas, 4000); })
       .catch(() => { f[campo] = antes; reRenderAll(); triggerToast("Falha ao gravar a alteração."); });
     }
 
@@ -646,7 +663,7 @@
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ acao: 'falta_eliminar', linha, quem: f.quem })
       })
-      .then(() => { triggerToast("Pedido eliminado."); setTimeout(ligarFaltas, 4000); })
+      .then(() => { triggerToast("Pedido eliminado."); setTimeout(recarregarFaltas, 4000); })
       .catch(() => triggerToast("Falha ao eliminar na folha — verifique e tente novamente."));
     }
 
@@ -839,7 +856,7 @@
                 <td class="px-3 py-2.5 text-center" style="text-align:center;">${selStatus}</td>
                 <td class="px-3 py-2.5">${selMotivo}</td>
                 <td class="px-3 py-2.5 text-center font-mono font-bold" style="text-align:center;">${numPT(f.dias)}${f.tipo === 'horas' ? `<span class="block text-[9px] font-normal text-slate-400">${numPT(f.horas)}h</span>` : ''}</td>
-                <td class="px-3 py-2.5 text-center" style="text-align:center;" title="Saldo atual do colaborador (registado na folha: ${escapeAttr(f.disponiveis)})">
+                <td class="px-3 py-2.5 text-center" style="text-align:center;" title="Dias disponíveis após fecho Somengil (coluna D da aba Equipa), já sem os pedidos aprovados e menos os que estão pendentes. Registado nesta linha: ${escapeAttr(f.disponiveis)}">
                   <span class="inline-block px-2 py-0.5 rounded-full font-bold text-[11px] ${disp < 0 ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-800'}">${numPT(disp)}</span>
                 </td>
                 <td class="px-3 py-2.5 text-slate-500">${f.obs || ''}</td>
@@ -949,7 +966,7 @@
             <span class="block text-2xl font-bold text-amber-600 mt-1">${numPT(s.usados)} dias</span>
           </div>
           <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
-            <span class="block text-xs font-bold text-slate-400 uppercase">Pedidos por aprovar</span>
+            <span class="block text-xs font-bold text-slate-400 uppercase">Reservados (por aprovar)</span>
             <span class="block text-2xl font-bold text-slate-700 mt-1">${numPT(s.pendentes)} dias</span>
           </div>
           <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
@@ -984,7 +1001,7 @@
         </div>
 
         <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-xs text-slate-600">
-          <span class="font-bold">Como é contado:</span> um pedido é <strong>ou</strong> em dias <strong>ou</strong> em horas. Em dias, indica o primeiro e o último dia de ausência — contam os dois (inclusive) e só os dias úteis (sem fins de semana nem dias de paragem da empresa). Nos pedidos por horas, ${HORAS_DIA_UTIL}h equivalem a 1 dia. Só os motivos marcados como "desconta férias" saem dos seus dias disponíveis.
+          <span class="font-bold">Como é contado:</span> um pedido é <strong>ou</strong> em dias <strong>ou</strong> em horas. Em dias, indica o primeiro e o último dia de ausência — contam os dois (inclusive) e só os dias úteis (sem fins de semana nem dias de paragem da empresa). Os dias saem do seu saldo quando o RH aprova o pedido, e só nos motivos marcados como "desconta férias". Os pedidos em horas ficam registados mas não descontam dias (${HORAS_DIA_UTIL}h aparecem como 1 dia apenas a título informativo).
         </div>`;
     }
 
