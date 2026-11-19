@@ -1236,6 +1236,301 @@
       `;
     }
 
+    // ===================================================================
+    // MÓDULO: MENSAGENS  (separador "Mensagens" da folha das horas)
+    // Cabeçalho A:E:  ID | De | Para | Mensagem | Status
+    //  - De / Para: "RH" ou o nome completo do colaborador (igual à aba "Equipa")
+    //  - Status: "Não lida" | "Lida" (passa a "Lida" quando o destinatário abre a conversa)
+    //  - ID: MSG-AAAAMMDD-HHMMSS-xxxx (guarda também a data/hora de envio)
+    // O RH escreve a qualquer colaborador e pode apagar; os colaboradores só escrevem ao RH.
+    // ===================================================================
+    const MSG_SHEET_ID = '1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds';
+    const MSG_TAB = 'Mensagens';
+    const MSG_RH = 'RH';
+    const MSG_MAX = 2000;            // limite de caracteres por mensagem
+
+    let mensagens = [];              // [{ id, de, para, texto, status, data: Date|null }]
+    let msgCarregadas = false;
+    let msgErro = '';
+    let msgRascunho = '';            // texto que está a ser escrito (sobrevive aos re-renders)
+    let msgConversaRH = '';          // colaborador selecionado na vista do RH (nome completo)
+    let msgPesquisaRH = '';
+    // IDs de mensagens já abertas neste browser — guardados para o indicador não voltar
+    // a aparecer enquanto a folha ainda não mostra "Lida" (a leitura pública tem atraso)
+    const MSG_LIDAS_KEY = 'somengil_msg_lidas';
+    const msgLidasEnviadas = new Set((() => { try { return JSON.parse(localStorage.getItem(MSG_LIDAS_KEY)) || []; } catch (e) { return []; } })());
+    function guardarMsgLidas() {
+      try { localStorage.setItem(MSG_LIDAS_KEY, JSON.stringify(Array.from(msgLidasEnviadas).slice(-500))); } catch (e) {}
+    }
+
+    function msgNovoId() {
+      const d = new Date(), p = (x) => String(x).padStart(2, '0');
+      return `MSG-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${Math.random().toString(36).slice(2, 6)}`;
+    }
+
+    function msgDataDoId(id) {
+      const m = String(id).match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/);
+      return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
+    }
+
+    function msgFmtData(d) {
+      if (!d) return '';
+      const hoje = new Date();
+      const hora = d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+      if (d.toDateString() === hoje.toDateString()) return `hoje, ${hora}`;
+      return `${d.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: d.getFullYear() === hoje.getFullYear() ? undefined : 'numeric' })}, ${hora}`;
+    }
+
+    const msgEhRH = (nome) => normNome(nome) === normNome(MSG_RH);
+    const msgLida = (m) => normNome(m.status) === 'lida';
+    // Conversa entre o RH e um colaborador (todas as mensagens em que ele é De ou Para)
+    const msgDaConversa = (nome) => mensagens.filter(m => normNome(m.de) === normNome(nome) || normNome(m.para) === normNome(nome));
+
+    // Nº de mensagens por ler para o utilizador com sessão iniciada
+    function msgPorLer() {
+      if (!loggedUser || loggedUser.isBackoffice) return 0;
+      const eu = loggedUser.isRH ? MSG_RH : loggedUser.nome;
+      return mensagens.filter(m => normNome(m.para) === normNome(eu) && !msgLida(m)).length;
+    }
+
+    async function ligarMensagens() {
+      try {
+        const jsonObj = await gvizJsonp(MSG_SHEET_ID, MSG_TAB);
+        const val = (row, i) => {
+          const c = row.c && row.c[i];
+          const v = c ? (c.f !== null && c.f !== undefined ? c.f : c.v) : '';
+          return (v === null || v === undefined) ? '' : String(v);
+        };
+        const lidas = (jsonObj.table.rows || []).map(row => ({
+          id: val(row, 0).trim(), de: val(row, 1).trim(), para: val(row, 2).trim(),
+          texto: val(row, 3), status: val(row, 4).trim() || 'Não lida'
+        })).filter(m => m.id && m.id !== 'ID' && m.texto);
+        // Mensagens marcadas como lidas nesta sessão que a folha ainda não reflete
+        lidas.forEach(m => { m.data = msgDataDoId(m.id); if (msgLidasEnviadas.has(m.id)) m.status = 'Lida'; });
+        // Mensagens enviadas há instantes que ainda não chegaram à folha
+        const pendentes = mensagens.filter(m => m._local && !lidas.some(x => x.id === m.id));
+        mensagens = [...lidas, ...pendentes].sort((a, b) => (a.data || 0) - (b.data || 0));
+        msgCarregadas = true; msgErro = '';
+      } catch (e) {
+        msgErro = (e && e.message) ? e.message : String(e);
+        msgCarregadas = true;
+        console.error('Falha ao carregar o separador "Mensagens".', e);
+      }
+      reRenderAll();
+    }
+
+    function msgPost(payload) {
+      return fetch(APPS_SCRIPT_URL, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    function enviarMensagem() {
+      const texto = msgRascunho.trim();
+      const para = loggedUser.isRH ? msgConversaRH : MSG_RH;
+      if (!texto) { triggerToast("Escreva a mensagem antes de enviar."); return; }
+      if (!para) { triggerToast("Escolha o colaborador a quem quer escrever."); return; }
+      if (texto.length > MSG_MAX) { triggerToast(`A mensagem tem mais de ${MSG_MAX} caracteres.`); return; }
+      if (!APPS_SCRIPT_URL) { triggerToast("Endpoint de gravação não configurado — a mensagem não foi enviada."); return; }
+
+      const msg = { id: msgNovoId(), de: loggedUser.isRH ? MSG_RH : loggedUser.nome, para, texto, status: 'Não lida', _local: true };
+      msg.data = msgDataDoId(msg.id);
+      mensagens.push(msg);
+      msgRascunho = '';
+      reRenderAll();
+
+      msgPost({ acao: 'msg_nova', id: msg.id, de: msg.de, para: msg.para, mensagem: msg.texto })
+        .then(() => { triggerToast("Mensagem enviada."); setTimeout(ligarMensagens, 4000); })
+        .catch(() => {
+          mensagens = mensagens.filter(m => m.id !== msg.id);
+          msgRascunho = texto;
+          reRenderAll();
+          triggerToast("Falha ao contactar o Google Sheets — a mensagem não foi enviada.");
+        });
+    }
+
+    function eliminarMensagem(id) {
+      if (!loggedUser || !loggedUser.isRH) return;
+      const m = mensagens.find(x => x.id === id);
+      if (!m) return;
+      if (!APPS_SCRIPT_URL) { triggerToast("Endpoint de gravação não configurado — não é possível apagar."); return; }
+      if (!confirm(`Apagar esta mensagem (${m.de} → ${m.para})? A linha é apagada na folha.`)) return;
+
+      mensagens = mensagens.filter(x => x.id !== id);
+      reRenderAll();
+      msgPost({ acao: 'msg_eliminar', id, por: MSG_RH })
+        .then(() => { triggerToast("Mensagem apagada."); setTimeout(ligarMensagens, 4000); })
+        .catch(() => { triggerToast("Falha ao apagar na folha — verifique e tente novamente."); ligarMensagens(); });
+    }
+
+    // Marca como lidas as mensagens dirigidas a mim na conversa que está aberta no ecrã
+    function marcarMensagensLidas() {
+      if (!loggedUser || loggedUser.isBackoffice || !APPS_SCRIPT_URL) return;
+      let alvo;
+      if (loggedUser.isRH) {
+        if (rhView !== 'mensagens' || !msgConversaRH) return;
+        alvo = mensagens.filter(m => msgEhRH(m.para) && normNome(m.de) === normNome(msgConversaRH));
+      } else {
+        if (activeTab !== 'mensagens') return;
+        alvo = mensagens.filter(m => normNome(m.para) === normNome(loggedUser.nome));
+      }
+      const ids = alvo.filter(m => !msgLida(m) && !m._local && !msgLidasEnviadas.has(m.id)).map(m => m.id);
+      if (ids.length === 0) return;
+      ids.forEach(id => msgLidasEnviadas.add(id));
+      guardarMsgLidas();
+      mensagens.forEach(m => { if (ids.includes(m.id)) m.status = 'Lida'; });
+      msgPost({ acao: 'msg_lida', ids, leitor: loggedUser.isRH ? MSG_RH : loggedUser.nome })
+        .catch(() => { ids.forEach(id => msgLidasEnviadas.delete(id)); guardarMsgLidas(); });
+    }
+
+    function abrirConversaRH(nome) {
+      msgConversaRH = nome;
+      msgRascunho = '';
+      renderRHPanel();
+    }
+
+    function atualizarPesquisaMsgRH(el) {
+      msgPesquisaRH = el.value;
+      renderRHPanel();
+      const novo = document.getElementById('msg-pesquisa');
+      if (novo) { novo.focus(); novo.setSelectionRange(novo.value.length, novo.value.length); }
+    }
+
+    // Executado depois de cada render: desce a conversa até ao fim e mantém o foco na caixa de texto
+    let msgFocoTexto = false;
+    function posRenderMensagens() {
+      const fio = document.getElementById('msg-fio');
+      if (fio) fio.scrollTop = fio.scrollHeight;
+      const caixa = document.getElementById('msg-texto');
+      if (caixa && msgFocoTexto) { caixa.focus(); caixa.setSelectionRange(caixa.value.length, caixa.value.length); }
+    }
+
+    function msgTeclaTexto(ev) {
+      if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); enviarMensagem(); }
+    }
+
+    // --- HTML: conversa (bolhas) + caixa para escrever ---
+    function renderFioMensagensHTML(lista, eu, podeApagar) {
+      if (!msgCarregadas) return `<p class="text-xs text-slate-400 text-center py-10">A carregar mensagens…</p>`;
+      if (msgErro) return `<p class="text-xs text-red-600 text-center py-10">Não foi possível ler o separador "Mensagens": ${escapeAttr(msgErro)}</p>`;
+      if (lista.length === 0) return `<p class="text-xs text-slate-400 text-center py-10">Ainda não há mensagens nesta conversa.</p>`;
+      return lista.map(m => {
+        const minha = normNome(m.de) === normNome(eu);
+        return `
+          <div class="flex ${minha ? 'justify-end' : 'justify-start'}">
+            <div class="max-w-[85%] sm:max-w-[70%]">
+              <div class="rounded-2xl px-3.5 py-2.5 text-sm shadow-sm whitespace-pre-wrap break-words ${minha ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'}">${escapeAttr(m.texto)}</div>
+              <div class="flex items-center gap-2 mt-1 text-[10px] text-slate-400 ${minha ? 'justify-end' : ''}">
+                <span>${minha ? 'Eu' : escapeAttr(msgEhRH(m.de) ? 'RH' : getFirstName(m.de))} · ${msgFmtData(m.data)}</span>
+                ${minha ? `<span class="font-bold ${m._local ? 'text-slate-400' : msgLida(m) ? 'text-emerald-600' : 'text-slate-400'}">${m._local ? 'a enviar…' : msgLida(m) ? '✓✓ Lida' : '✓ Não lida'}</span>` : ''}
+                ${podeApagar && !m._local ? `<button data-id="${escapeAttr(m.id)}" onclick="eliminarMensagem(this.dataset.id)" title="Apagar mensagem" class="text-red-500 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded w-5 h-5 inline-flex items-center justify-center font-bold transition-colors">✕</button>` : ''}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderCaixaMensagemHTML(placeholder) {
+      return `
+        <div class="border-t border-slate-200 p-3 bg-white flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
+          <textarea id="msg-texto" rows="2" maxlength="${MSG_MAX}" placeholder="${escapeAttr(placeholder)}"
+            oninput="msgRascunho = this.value" onfocus="msgFocoTexto = true" onblur="if (this.isConnected) msgFocoTexto = false" onkeydown="msgTeclaTexto(event)"
+            class="flex-1 resize-y min-h-[2.75rem] px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">${escapeAttr(msgRascunho)}</textarea>
+          <button onclick="enviarMensagem()" class="text-xs font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl px-5 py-3 shrink-0">Enviar ➤</button>
+        </div>
+        <p class="px-3 pb-2 text-[10px] text-slate-400 bg-white">Ctrl + Enter para enviar.</p>`;
+    }
+
+    // --- HTML: área do colaborador ---
+    function renderMensagensColabHTML() {
+      const lista = msgDaConversa(loggedUser.nome);
+      return `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-1.5"><span>💬</span> Mensagens com o RH <span class="text-[11px] font-medium text-slate-400">(${lista.length})</span></h3>
+            <button onclick="ligarMensagens()" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5">↻ Atualizar</button>
+          </div>
+          <div id="msg-fio" class="p-4 space-y-3 bg-slate-50/60 max-h-[60vh] overflow-y-auto">${renderFioMensagensHTML(lista, loggedUser.nome, false)}</div>
+          ${renderCaixaMensagemHTML('Escrever uma mensagem ao RH…')}
+        </div>`;
+    }
+
+    // Aviso no topo da área do colaborador quando há mensagens por ler
+    function renderAvisoMensagensHTML() {
+      const n = msgPorLer();
+      if (n === 0 || activeTab === 'mensagens') return '';
+      return `
+        <button onclick="setTab('mensagens')" class="w-full text-left bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors rounded-2xl p-4 flex items-center gap-3">
+          <span class="text-2xl">💬</span>
+          <span class="flex-1">
+            <span class="block text-sm font-bold text-blue-900">Tem ${n} mensagem${n > 1 ? 's' : ''} nova${n > 1 ? 's' : ''} do RH</span>
+            <span class="block text-xs text-blue-700">Toque aqui para ler.</span>
+          </span>
+          <span class="text-blue-700 font-black">›</span>
+        </button>`;
+    }
+
+    // --- HTML: painel do RH (lista de colaboradores + conversa) ---
+    function renderMensagensRHHTML() {
+      // Pessoas: todos os colaboradores + quem aparece nas mensagens (caso o nome não esteja na equipa)
+      const nomes = new Map();
+      colaboradores.forEach(c => c.nome && nomes.set(normNome(c.nome), c.nome));
+      mensagens.forEach(m => [m.de, m.para].forEach(n => { if (n && !msgEhRH(n) && !nomes.has(normNome(n))) nomes.set(normNome(n), n); }));
+
+      const q = normNome(msgPesquisaRH);
+      const pessoas = Array.from(nomes.values())
+        .filter(n => !q || normNome(n).includes(q))
+        .map(nome => {
+          const conv = msgDaConversa(nome);
+          return {
+            nome, total: conv.length,
+            porLer: conv.filter(m => msgEhRH(m.para) && !msgLida(m)).length,
+            ultima: conv.length ? conv[conv.length - 1] : null
+          };
+        })
+        .sort((a, b) => (b.porLer > 0) - (a.porLer > 0) || ((b.ultima && b.ultima.data) || 0) - ((a.ultima && a.ultima.data) || 0) || a.nome.localeCompare(b.nome, 'pt'));
+
+      const itens = pessoas.length === 0
+        ? `<p class="text-xs text-slate-400 p-4">Ninguém encontrado.</p>`
+        : pessoas.map(p => {
+            const ativo = normNome(p.nome) === normNome(msgConversaRH);
+            const resumo = p.ultima ? `${msgEhRH(p.ultima.de) ? 'Eu: ' : ''}${p.ultima.texto}` : 'Sem mensagens';
+            return `
+              <button data-nome="${escapeAttr(p.nome)}" onclick="abrirConversaRH(this.dataset.nome)" class="w-full text-left px-3 py-2.5 border-b border-slate-100 flex items-start gap-2 transition-colors ${ativo ? 'bg-blue-50' : 'hover:bg-slate-50'}">
+                <span class="flex-1 min-w-0">
+                  <span class="block text-xs font-bold truncate ${ativo ? 'text-blue-800' : 'text-slate-800'}">${escapeAttr(p.nome)}</span>
+                  <span class="block text-[11px] truncate ${p.porLer ? 'text-slate-700 font-semibold' : 'text-slate-400'}">${escapeAttr(resumo)}</span>
+                </span>
+                ${p.porLer ? `<span class="shrink-0 bg-blue-600 text-white text-[10px] font-black rounded-full min-w-[1.25rem] h-5 px-1.5 inline-flex items-center justify-center">${p.porLer}</span>` : ''}
+              </button>`;
+          }).join('');
+
+      const conversa = msgConversaRH ? msgDaConversa(msgConversaRH) : [];
+      const painelConversa = msgConversaRH
+        ? `
+          <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 text-sm truncate">💬 ${escapeAttr(msgConversaRH)} <span class="text-[11px] font-medium text-slate-400">(${conversa.length})</span></h3>
+            <button onclick="abrirConversaRH('')" class="md:hidden text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5">‹ Voltar</button>
+          </div>
+          <div id="msg-fio" class="flex-1 p-4 space-y-3 bg-slate-50/60 min-h-[16rem] max-h-[60vh] overflow-y-auto">${renderFioMensagensHTML(conversa, MSG_RH, true)}</div>
+          ${renderCaixaMensagemHTML(`Escrever a ${getFirstName(msgConversaRH)}…`)}`
+        : `<div class="flex-1 flex items-center justify-center p-10 text-xs text-slate-400 text-center">Escolha um colaborador à esquerda para ver a conversa ou enviar uma mensagem.</div>`;
+
+      return `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden grid grid-cols-1 md:grid-cols-[17rem_1fr]">
+          <div class="${msgConversaRH ? 'hidden md:flex' : 'flex'} flex-col border-r border-slate-200 min-w-0">
+            <div class="p-3 border-b border-slate-200 bg-slate-50 flex gap-2">
+              <input id="msg-pesquisa" type="text" placeholder="Procurar colaborador…" value="${escapeAttr(msgPesquisaRH)}" oninput="atualizarPesquisaMsgRH(this)" class="flex-1 min-w-0 px-3 py-1.5 text-xs border border-slate-300 rounded-lg" />
+              <button onclick="ligarMensagens()" title="Atualizar" class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5">↻</button>
+            </div>
+            <div class="overflow-y-auto max-h-[70vh]">${itens}</div>
+          </div>
+          <div class="${msgConversaRH ? 'flex' : 'hidden md:flex'} flex-col min-w-0">${painelConversa}</div>
+        </div>`;
+    }
+
     // Conta os dias úteis (2ª a 6ª feira, excluindo os dias de paragem da empresa) entre duas datas, inclusive
     function diasUteisPortugal(inicio, fim) {
       let total = 0;
@@ -1744,6 +2039,7 @@
 
     function handleLogout() {
       loggedUser = null;
+      msgRascunho = ''; msgConversaRH = ''; msgPesquisaRH = '';
       reRenderAll();
     }
 
@@ -2126,6 +2422,7 @@
     }
 
     function renderRHPanel() {
+      marcarMensagensLidas();
       const container = document.getElementById('rh-section');
       
       const setores = ["Todos", ...Array.from(new Set(colaboradores.map(c => c.setor)))];
@@ -2317,9 +2614,10 @@
           <button onclick="setRhView('ausencias')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'ausencias' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">🗓️ Pedidos de ausência (${faltas.length})</button>
           <button onclick="setRhView('calendario')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'calendario' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">📅 Calendário de ausências (${calendario.length})</button>
           <button onclick="setRhView('feriados')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'feriados' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">🎉 Calendário Somengil</button>
+          <button onclick="setRhView('mensagens')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'mensagens' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">💬 Mensagens${msgPorLer() ? ` <span class="ml-1 bg-red-600 text-white rounded-full px-1.5 py-0.5 text-[10px]">${msgPorLer()}</span>` : ''}</button>
         </div>
 
-        ${rhView === 'feriados' ? renderFeriadosHTML() : rhView === 'ausencias' ? faltasHTML : rhView === 'calendario' ? calHTML : rhView === 'picagens' ? picHTML : `
+        ${rhView === 'mensagens' ? renderMensagensRHHTML() : rhView === 'feriados' ? renderFeriadosHTML() : rhView === 'ausencias' ? faltasHTML : rhView === 'calendario' ? calHTML : rhView === 'picagens' ? picHTML : `
         <div class="bg-white p-4 border border-slate-200 rounded-xl shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
           <input 
             id="rh-search"
@@ -2409,9 +2707,11 @@
         </div>
         `}
       `;
+      posRenderMensagens();
     }
 
     function renderColabPanel() {
+      marcarMensagensLidas();
       const container = document.getElementById('colab-section');
       const stats = getAttendanceStats(loggedUser.id);
 
@@ -2421,6 +2721,8 @@
         innerContent = renderAusenciasColabHTML();
       } else if (activeTab === "feriados") {
         innerContent = renderFeriadosHTML();
+      } else if (activeTab === "mensagens") {
+        innerContent = renderMensagensColabHTML();
       } else if (activeTab === "dashboard") {
         innerContent = `
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2714,13 +3016,22 @@
             >
               🎉 Calendário Somengil
             </button>
+            <button
+              onclick="setTab('mensagens')"
+              class="px-5 py-2.5 rounded-xl text-xs font-black border transition-all ${activeTab === 'mensagens' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'}"
+            >
+              💬 Mensagens${msgPorLer() ? ` <span class="ml-1 bg-red-600 text-white rounded-full px-1.5 py-0.5 text-[10px]">${msgPorLer()}</span>` : ''}
+            </button>
           </div>
         </div>
+
+        ${renderAvisoMensagensHTML()}
 
         <div class="space-y-6">
           ${innerContent}
         </div>
       `;
+      posRenderMensagens();
     }
 
     // --- PWA: instalação e service worker ---
@@ -2788,6 +3099,9 @@
       ligarParagens();      // carrega o separador "Paragens" (dias de fecho/feriados da empresa)
       ligarFaltas();        // carrega o separador "Faltas" (pedidos de ausência)
       ligarFeriados();      // carrega os separadores "Feriados" e "Convívios" (Calendário Somengil)
+      ligarMensagens();     // carrega o separador "Mensagens"
+      // Volta a ler as mensagens a cada minuto enquanto alguém tem a sessão aberta
+      setInterval(() => { if (loggedUser && !loggedUser.isBackoffice && !document.hidden) ligarMensagens(); }, 60000);
     });
   </script>
 

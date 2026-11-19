@@ -7,14 +7,38 @@
  *  > Versão: Nova versão > Implementar.
  *  Sem nova versão, o URL continua a correr o código antigo.
  *
- *  Só há UMA alteração ao teu código original: o doPost passou a
- *  desviar as ações "falta_*" para o separador "Faltas" ANTES de
- *  chegarem ao escreverAjuste(). Tudo o resto está igual, linha a linha.
+ *  O teu código original (doGet, escreverAjuste, eliminarLinha) está
+ *  intacto. O que é novo:
+ *    - o doPost desvia as ações "falta_*" ANTES de chegarem ao
+ *      escreverAjuste (senão cada pedido criava uma linha de ajuste
+ *      de horas na aba "Dados");
+ *    - o módulo de ausências, que escreve na aba "Faltas" e desconta
+ *      os dias na coluna D da aba "Equipa" quando um pedido é aprovado;
+ *    - o módulo de mensagens: o doPost desvia as ações "msg_*" para o
+ *      separador "Mensagens" desta folha.
  * ============================================================
  */
 
 var ID_FOLHA = "1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds";
 var NOME_ABA_FALTAS = "Faltas";
+var NOME_ABA_EQUIPA = "Equipa";
+
+// Aba "Equipa":  A Colaborador | B Password | C Setor | D Dias disponíveis após fecho Somengil
+var COL_EQUIPA_NOME = 1;
+var COL_EQUIPA_DIAS = 4;
+
+// Aba "Faltas":  A Quem? | B Setor | C Início | D Fim | E Status | F Motivo |
+//                G Nº de Dias Pedidos | H Dias Disponíveis |
+//                I Tipo | J Horas | K Observações | L Registado em | M Descontado
+var COL_FALTAS_DISP = 8;
+var COL_FALTAS_DESCONTADO = 13;
+
+// Motivos que consomem dias de férias. TEM DE COINCIDIR com a lista
+// MOTIVOS_AUSENCIA (desconta: true) do HTML do portal.
+var MOTIVOS_DESCONTAM = ['ferias', 'pessoal'];
+
+// Mensagens: separador "Mensagens" desta mesma folha (A:E  ID | De | Para | Mensagem | Status)
+var NOME_ABA_MSG = "Mensagens";
 
 
 function doGet(e) {
@@ -30,7 +54,9 @@ function doPost(e) {
 
   var resultado;
   if (dados.acao && String(dados.acao).indexOf('falta_') === 0) {
-    resultado = tratarFaltas(dados);              // módulo de pedidos de ausência
+    resultado = tratarFaltas(dados);              // pedidos de ausência
+  } else if (dados.acao && String(dados.acao).indexOf('msg_') === 0) {
+    resultado = tratarMensagens(dados);           // mensagens (separador "Mensagens")
   } else if (dados.acao === 'eliminar') {
     resultado = eliminarLinha(dados);             // eliminar picagem (como sempre)
   } else {
@@ -121,11 +147,15 @@ function eliminarLinha(dados) {
 
 
 /* ============================================================
- *  NOVO — MÓDULO DE PEDIDOS DE AUSÊNCIA (separador "Faltas")
- *  Cabeçalho A:H  Quem? | Setor | Início | Fim | Status | Motivo |
- *                 Nº de Dias Pedidos | Dias Disponíveis
- *  Extra    I:L  Tipo | Horas | Observações | Registado em
- *  Só escreve neste separador. Nunca toca em "Dados" nem em "Equipa".
+ *  NOVO — MÓDULO DE PEDIDOS DE AUSÊNCIA
+ *
+ *  Regra do saldo: a coluna D da aba "Equipa" é a fonte de verdade.
+ *  - pedido criado (Pendente)  -> não mexe na coluna D
+ *  - pedido posto em Aprovado  -> retira os dias da coluna D
+ *  - Aprovado -> Pendente/Não Aprovado, ou pedido eliminado -> devolve os dias
+ *  A coluna M ("Descontado") marca as linhas já descontadas, para que o
+ *  mesmo pedido nunca seja descontado duas vezes.
+ *  Só pedidos em DIAS mexem na coluna D; os de horas ficam só registados.
  * ============================================================ */
 
 function tratarFaltas(dados) {
@@ -139,6 +169,7 @@ function tratarFaltas(dados) {
 
     // ---------- novo pedido ----------
     if (dados.acao === 'falta_nova') {
+      var saldoAtual = lerDiasEquipa(dados.quem);
       sh.appendRow([
         dados.quem,
         dados.setor,
@@ -147,13 +178,16 @@ function tratarFaltas(dados) {
         dados.status || 'Pendente',
         dados.motivo,
         Number(dados.dias) || 0,
-        Number(dados.disponiveis) || 0,
+        saldoAtual === null ? (Number(dados.disponiveis) || 0) : saldoAtual,
         dados.tipo === 'horas' ? 'Horas' : 'Dias',
         Number(dados.horas) || 0,
         dados.obs || '',
-        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm")
+        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm"),
+        ''
       ]);
-      return { ok: true, acao: dados.acao, linha: sh.getLastRow() };
+      var nova = sh.getLastRow();
+      var r = sincronizarDesconto(sh, nova);   // por norma nasce Pendente: não desconta
+      return { ok: true, acao: dados.acao, linha: nova, saldo: r };
     }
 
     var num = Number(dados.linha);
@@ -162,29 +196,224 @@ function tratarFaltas(dados) {
     }
 
     // Proteção: a linha tem de continuar a ser do colaborador esperado
-    // (as linhas mudam de número quando se apagam pedidos)
+    // (os números de linha mudam quando se apagam pedidos)
     if (dados.quem) {
-      var quemFolha = String(sh.getRange(num, 1).getValue() || "").trim().toLowerCase();
-      var quemEsperado = String(dados.quem).trim().toLowerCase();
-      if (quemFolha !== quemEsperado) {
+      var quemFolha = normalizar(sh.getRange(num, 1).getValue());
+      if (quemFolha !== normalizar(dados.quem)) {
         return { ok: false, erro: "A linha " + num + " já não corresponde a " + dados.quem + " — nada foi alterado." };
       }
     }
 
     // ---------- editar Status ou Motivo ----------
     if (dados.acao === 'falta_atualizar') {
-      var coluna = (dados.campo === 'Motivo') ? 6 : 5;        // F = Motivo | E = Status
+      var coluna = (dados.campo === 'Motivo') ? 6 : 5;          // F = Motivo | E = Status
       sh.getRange(num, coluna).setValue(dados.valor);
-      if (dados.disponiveis !== undefined && dados.disponiveis !== null && dados.disponiveis !== '') {
-        sh.getRange(num, 8).setValue(Number(dados.disponiveis));   // H = Dias Disponíveis
-      }
-      return { ok: true, acao: dados.acao, linha: num, campo: dados.campo, valor: dados.valor };
+      var res = sincronizarDesconto(sh, num);                   // desconta ou devolve, se for o caso
+      return { ok: true, acao: dados.acao, linha: num, campo: dados.campo, valor: dados.valor, saldo: res };
     }
 
     // ---------- eliminar / anular pedido ----------
     if (dados.acao === 'falta_eliminar') {
+      var devolvido = devolverSeDescontado(sh, num);            // se estava aprovado, devolve os dias
       sh.deleteRow(num);
-      return { ok: true, acao: dados.acao, linhaEliminada: num };
+      return { ok: true, acao: dados.acao, linhaEliminada: num, devolvido: devolvido };
+    }
+
+    return { ok: false, erro: "Ação desconhecida: " + dados.acao };
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+/** Põe a coluna D da "Equipa" de acordo com o estado atual do pedido da linha `num`. */
+function sincronizarDesconto(sh, num) {
+  var largura = Math.min(COL_FALTAS_DESCONTADO, sh.getMaxColumns());
+  var l = sh.getRange(num, 1, 1, largura).getValues()[0];
+
+  var quem   = l[0];
+  var status = l[4];
+  var motivo = l[5];
+  var dias   = Number(l[6]) || 0;
+  var tipo   = l[8];
+  var marca  = largura >= COL_FALTAS_DESCONTADO ? l[COL_FALTAS_DESCONTADO - 1] : '';
+
+  var jaDescontado = normalizar(marca) === 'sim';
+  var deveDescontar = normalizar(status) === 'aprovado'
+                   && normalizar(tipo) !== 'horas'
+                   && descontaFerias(motivo)
+                   && dias > 0;
+
+  if (deveDescontar === jaDescontado) return { semAlteracao: true };
+
+  var delta = deveDescontar ? -dias : dias;
+  var novoSaldo = ajustarDiasEquipa(quem, delta);
+
+  if (novoSaldo === null) {
+    return { ok: false, erro: 'Colaborador "' + quem + '" não encontrado na aba "' + NOME_ABA_EQUIPA + '".' };
+  }
+
+  sh.getRange(num, COL_FALTAS_DESCONTADO).setValue(deveDescontar ? 'Sim' : '');
+  sh.getRange(num, COL_FALTAS_DISP).setValue(novoSaldo);
+  return { descontado: deveDescontar, dias: dias, novoSaldo: novoSaldo };
+}
+
+
+/** Se a linha já tinha sido descontada, devolve os dias à coluna D (usar antes de apagar). */
+function devolverSeDescontado(sh, num) {
+  var largura = Math.min(COL_FALTAS_DESCONTADO, sh.getMaxColumns());
+  if (largura < COL_FALTAS_DESCONTADO) return 0;
+  var l = sh.getRange(num, 1, 1, largura).getValues()[0];
+  if (normalizar(l[COL_FALTAS_DESCONTADO - 1]) !== 'sim') return 0;
+  var dias = Number(l[6]) || 0;
+  if (!dias) return 0;
+  ajustarDiasEquipa(l[0], dias);
+  return dias;
+}
+
+
+/** Soma `delta` à coluna D da "Equipa" do colaborador. Devolve o novo valor, ou null se não o encontrar. */
+function ajustarDiasEquipa(nome, delta) {
+  var shEq = SpreadsheetApp.openById(ID_FOLHA).getSheetByName(NOME_ABA_EQUIPA);
+  if (!shEq) return null;
+  var linha = procurarLinhaEquipa(shEq, nome);
+  if (linha < 1) return null;
+  var cel = shEq.getRange(linha, COL_EQUIPA_DIAS);
+  var novo = Math.round(((Number(cel.getValue()) || 0) + delta) * 100) / 100;
+  cel.setValue(novo);
+  return novo;
+}
+
+
+/** Lê a coluna D da "Equipa" sem alterar nada. */
+function lerDiasEquipa(nome) {
+  var shEq = SpreadsheetApp.openById(ID_FOLHA).getSheetByName(NOME_ABA_EQUIPA);
+  if (!shEq) return null;
+  var linha = procurarLinhaEquipa(shEq, nome);
+  if (linha < 1) return null;
+  return Number(shEq.getRange(linha, COL_EQUIPA_DIAS).getValue()) || 0;
+}
+
+
+function procurarLinhaEquipa(shEq, nome) {
+  var ultima = shEq.getLastRow();
+  if (ultima < 1) return -1;
+  var nomes = shEq.getRange(1, COL_EQUIPA_NOME, ultima, 1).getValues();
+  var alvo = normalizar(nome);
+  for (var i = 0; i < nomes.length; i++) {
+    if (normalizar(nomes[i][0]) === alvo) return i + 1;
+  }
+  return -1;
+}
+
+
+/** minúsculas, sem acentos, sem espaços a mais — para comparar nomes e motivos. */
+function normalizar(s) {
+  var t = String(s === null || s === undefined ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
+  try { t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
+  return t;
+}
+
+
+function descontaFerias(motivo) {
+  return MOTIVOS_DESCONTAM.indexOf(normalizar(motivo)) >= 0;
+}
+
+
+/**
+ * Teste rápido (correr no editor com ▶). Cria um pedido de teste, aprova-o,
+ * mostra o saldo antes/depois e depois apaga tudo — a coluna D fica como estava.
+ * Muda o NOME para um colaborador que exista na aba "Equipa".
+ */
+function testarFaltas() {
+  var NOME = 'Mário Jorge Marques Peixinho Fragoso';
+
+  Logger.log('Saldo inicial: ' + lerDiasEquipa(NOME));
+
+  var criado = tratarFaltas({
+    acao: 'falta_nova', quem: NOME, setor: 'Qualidade',
+    inicio: '04/01/2027', fim: '05/01/2027', status: 'Pendente',
+    motivo: 'Férias', dias: 2, disponiveis: 0, tipo: 'dias', horas: 0,
+    obs: 'linha de teste — apagar'
+  });
+  Logger.log('Criado: ' + JSON.stringify(criado));
+
+  Logger.log('Aprovar: ' + JSON.stringify(
+    tratarFaltas({ acao: 'falta_atualizar', linha: criado.linha, campo: 'Status', valor: 'Aprovado', quem: NOME })));
+  Logger.log('Saldo depois de aprovar: ' + lerDiasEquipa(NOME));
+
+  Logger.log('Eliminar: ' + JSON.stringify(
+    tratarFaltas({ acao: 'falta_eliminar', linha: criado.linha, quem: NOME })));
+  Logger.log('Saldo final (deve ser igual ao inicial): ' + lerDiasEquipa(NOME));
+}
+
+
+/* ============================================================
+ *  NOVO — MÓDULO DE MENSAGENS (separador "Mensagens")
+ *  Cabeçalho A:E  ID | De | Para | Mensagem | Status
+ *  Ações:  msg_nova     -> acrescenta uma linha (Status "Não lida")
+ *          msg_lida     -> põe "Lida" nas mensagens indicadas (só as dirigidas a quem lê)
+ *          msg_eliminar -> apaga a linha com esse ID (só o RH)
+ * ============================================================ */
+
+function tratarMensagens(dados) {
+  var sh = SpreadsheetApp.openById(ID_FOLHA).getSheetByName(NOME_ABA_MSG);
+  if (!sh) return { ok: false, erro: 'Não existe o separador "' + NOME_ABA_MSG + '".' };
+
+  // Texto começado por = + - @ seria interpretado como fórmula: guarda-se como texto
+  function texto(v) {
+    var t = String(v === null || v === undefined ? "" : v);
+    return /^[=+\-@]/.test(t) ? "'" + t : t;
+  }
+  function norm(v) { return String(v || "").trim().toLowerCase(); }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+
+    // ---------- nova mensagem ----------
+    if (dados.acao === 'msg_nova') {
+      var msg = String(dados.mensagem || "").trim();
+      if (!msg || !dados.de || !dados.para) return { ok: false, erro: "Faltam dados (De, Para ou Mensagem)." };
+      if (msg.length > 2000) msg = msg.slice(0, 2000);
+      // Os colaboradores só podem escrever ao RH
+      if (norm(dados.de) !== 'rh' && norm(dados.para) !== 'rh') return { ok: false, erro: "Os colaboradores só podem escrever ao RH." };
+      var id = /^MSG-[0-9A-Za-z-]{1,40}$/.test(String(dados.id || ""))
+        ? String(dados.id)
+        : "MSG-" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss") + "-" + Math.random().toString(36).slice(2, 6);
+      sh.appendRow([id, texto(dados.de), texto(dados.para), texto(msg), "Não lida"]);
+      return { ok: true, acao: dados.acao, id: id };
+    }
+
+    var ultima = sh.getLastRow();
+    if (ultima < 2) return { ok: true, acao: dados.acao, alteradas: 0 };
+    var valores = sh.getRange(2, 1, ultima - 1, 5).getValues();   // A:E sem o cabeçalho
+
+    // ---------- marcar como lidas ----------
+    if (dados.acao === 'msg_lida') {
+      var ids = {};
+      (dados.ids || []).forEach(function (x) { ids[String(x)] = true; });
+      var n = 0;
+      for (var i = 0; i < valores.length; i++) {
+        if (ids[String(valores[i][0])] && norm(valores[i][2]) === norm(dados.leitor) && norm(valores[i][4]) !== 'lida') {
+          sh.getRange(i + 2, 5).setValue("Lida");
+          n++;
+        }
+      }
+      return { ok: true, acao: dados.acao, alteradas: n };
+    }
+
+    // ---------- apagar mensagem (só RH) ----------
+    if (dados.acao === 'msg_eliminar') {
+      if (norm(dados.por) !== 'rh') return { ok: false, erro: "Só o RH pode apagar mensagens." };
+      for (var j = valores.length - 1; j >= 0; j--) {
+        if (String(valores[j][0]) === String(dados.id)) {
+          sh.deleteRow(j + 2);
+          return { ok: true, acao: dados.acao, id: dados.id };
+        }
+      }
+      return { ok: false, erro: "Mensagem não encontrada: " + dados.id };
     }
 
     return { ok: false, erro: "Ação desconhecida: " + dados.acao };
@@ -196,23 +425,11 @@ function tratarFaltas(dados) {
 
 
 /**
- * Teste rápido (correr no editor com ▶): cria uma linha de teste na aba
- * "Faltas" para confirmar que o separador existe e há permissões de escrita.
- * Depois apaga-a à mão.
+ * Teste rápido (correr no editor com ▶): cria uma mensagem de teste no
+ * separador "Mensagens" para confirmar permissões de escrita. Depois apaga-a à mão.
  */
-function testarFaltas() {
-  Logger.log(JSON.stringify(tratarFaltas({
-    acao: 'falta_nova',
-    quem: 'TESTE — apagar',
-    setor: 'Qualidade',
-    inicio: '01/01/2027',
-    fim: '02/01/2027',
-    status: 'Pendente',
-    motivo: 'Férias',
-    dias: 2,
-    disponiveis: 0,
-    tipo: 'dias',
-    horas: 0,
-    obs: 'linha de teste'
+function testarMensagens() {
+  Logger.log(JSON.stringify(tratarMensagens({
+    acao: 'msg_nova', de: 'RH', para: 'TESTE — apagar', mensagem: 'Mensagem de teste'
   })));
 }
