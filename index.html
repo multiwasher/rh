@@ -1262,6 +1262,13 @@
     function guardarMsgLidas() {
       try { localStorage.setItem(MSG_LIDAS_KEY, JSON.stringify(Array.from(msgLidasEnviadas).slice(-500))); } catch (e) {}
     }
+    // IDs de mensagens apagadas pelo RH — escondidas mesmo que a leitura da folha ainda as traga
+    const MSG_APAGADAS_KEY = 'somengil_msg_apagadas';
+    const msgApagadas = new Set((() => { try { return JSON.parse(localStorage.getItem(MSG_APAGADAS_KEY)) || []; } catch (e) { return []; } })());
+    function guardarMsgApagadas() {
+      try { localStorage.setItem(MSG_APAGADAS_KEY, JSON.stringify(Array.from(msgApagadas).slice(-500))); } catch (e) {}
+    }
+    let msgApagarPendente = '';      // ID da mensagem com a confirmação "Apagar? Sim / Não" aberta
 
     function msgNovoId() {
       const d = new Date(), p = (x) => String(x).padStart(2, '0');
@@ -1304,7 +1311,7 @@
         const lidas = (jsonObj.table.rows || []).map(row => ({
           id: val(row, 0).trim(), de: val(row, 1).trim(), para: val(row, 2).trim(),
           texto: val(row, 3), status: val(row, 4).trim() || 'Não lida'
-        })).filter(m => m.id && m.id !== 'ID' && m.texto);
+        })).filter(m => m.id && m.id !== 'ID' && m.texto && !msgApagadas.has(m.id));
         // Mensagens marcadas como lidas nesta sessão que a folha ainda não reflete
         lidas.forEach(m => { m.data = msgDataDoId(m.id); if (msgLidasEnviadas.has(m.id)) m.status = 'Lida'; });
         // Mensagens enviadas há instantes que ainda não chegaram à folha
@@ -1351,18 +1358,31 @@
         });
     }
 
+    // 1.º clique no ✕ abre a confirmação na própria mensagem (sem janelas do browser, que podem estar bloqueadas)
+    function pedirEliminarMensagem(id) {
+      if (!loggedUser || !loggedUser.isRH) return;
+      msgApagarPendente = (msgApagarPendente === id) ? '' : id;
+      renderRHPanel();
+    }
+
     function eliminarMensagem(id) {
+      msgApagarPendente = '';
       if (!loggedUser || !loggedUser.isRH) return;
       const m = mensagens.find(x => x.id === id);
       if (!m) return;
       if (!APPS_SCRIPT_URL) { triggerToast("Endpoint de gravação não configurado — não é possível apagar."); return; }
-      if (!confirm(`Apagar esta mensagem (${m.de} → ${m.para})? A linha é apagada na folha.`)) return;
 
+      msgApagadas.add(id);
+      guardarMsgApagadas();
       mensagens = mensagens.filter(x => x.id !== id);
       reRenderAll();
       msgPost({ acao: 'msg_eliminar', id, por: MSG_RH })
         .then(() => { triggerToast("Mensagem apagada."); setTimeout(ligarMensagens, 4000); })
-        .catch(() => { triggerToast("Falha ao apagar na folha — verifique e tente novamente."); ligarMensagens(); });
+        .catch(() => {
+          msgApagadas.delete(id); guardarMsgApagadas();
+          triggerToast("Falha ao apagar na folha — verifique e tente novamente.");
+          ligarMensagens();
+        });
     }
 
     // Marca como lidas as mensagens dirigidas a mim na conversa que está aberta no ecrã
@@ -1387,6 +1407,7 @@
 
     function abrirConversaRH(nome) {
       msgConversaRH = nome;
+      msgApagarPendente = '';
       msgRascunho = '';
       renderRHPanel();
     }
@@ -1425,7 +1446,13 @@
               <div class="flex items-center gap-2 mt-1 text-[10px] text-slate-400 ${minha ? 'justify-end' : ''}">
                 <span>${minha ? 'Eu' : escapeAttr(msgEhRH(m.de) ? 'RH' : getFirstName(m.de))} · ${msgFmtData(m.data)}</span>
                 ${minha ? `<span class="font-bold ${m._local ? 'text-slate-400' : msgLida(m) ? 'text-emerald-600' : 'text-slate-400'}">${m._local ? 'a enviar…' : msgLida(m) ? '✓✓ Lida' : '✓ Não lida'}</span>` : ''}
-                ${podeApagar && !m._local ? `<button data-id="${escapeAttr(m.id)}" onclick="eliminarMensagem(this.dataset.id)" title="Apagar mensagem" class="text-red-500 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded w-5 h-5 inline-flex items-center justify-center font-bold transition-colors">✕</button>` : ''}
+                ${podeApagar && !m._local ? (msgApagarPendente === m.id
+                  ? `<span class="inline-flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-1.5 py-0.5">
+                       <span class="font-bold text-red-700">Apagar?</span>
+                       <button data-id="${escapeAttr(m.id)}" onclick="eliminarMensagem(this.dataset.id)" class="font-black text-white bg-red-600 hover:bg-red-700 rounded px-2 py-0.5">Sim</button>
+                       <button onclick="pedirEliminarMensagem('')" class="font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded px-2 py-0.5">Não</button>
+                     </span>`
+                  : `<button data-id="${escapeAttr(m.id)}" onclick="pedirEliminarMensagem(this.dataset.id)" title="Apagar mensagem" class="text-red-500 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded w-5 h-5 inline-flex items-center justify-center font-bold transition-colors">✕</button>`) : ''}
               </div>
             </div>
           </div>`;

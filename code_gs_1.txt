@@ -408,7 +408,7 @@ function tratarMensagens(dados) {
     if (dados.acao === 'msg_eliminar') {
       if (norm(dados.por) !== 'rh') return { ok: false, erro: "Só o RH pode apagar mensagens." };
       for (var j = valores.length - 1; j >= 0; j--) {
-        if (String(valores[j][0]) === String(dados.id)) {
+        if (String(valores[j][0]).trim() === String(dados.id).trim()) {
           sh.deleteRow(j + 2);
           return { ok: true, acao: dados.acao, id: dados.id };
         }
