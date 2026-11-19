@@ -1127,6 +1127,115 @@
       }
     }
 
+    // --- CALENDÁRIO SOMENGIL: separadores "Feriados" e "Convívios" da folha do calendário, numa vista mensal ---
+    const TIPOS_EVENTO = {
+      feriado:  { separador: 'Feriados',  nome: 'Feriado',  chip: 'bg-red-600 text-white',     chipFora: 'bg-red-200 text-red-800',         dia: 'bg-red-50 text-red-700',         ponto: 'bg-red-600' },
+      convivio: { separador: 'Convívios', nome: 'Convívio', chip: 'bg-emerald-600 text-white', chipFora: 'bg-emerald-200 text-emerald-800', dia: 'bg-emerald-50 text-emerald-700', ponto: 'bg-emerald-600' }
+    };
+    let eventosCal = [];          // [{ data: Date, descricao, tipo: 'feriado' | 'convivio' }]
+    let feriadosCarregados = false;
+    let feriadosMes = (() => { const h = new Date(); return new Date(h.getFullYear(), h.getMonth(), 1); })();
+
+    async function ligarFeriados() {
+      const val = (cell) => cell ? (cell.f !== null && cell.f !== undefined ? cell.f : cell.v) : '';
+      const ler = async (tipo) => {
+        try {
+          const jsonObj = await gvizJsonp('1H5_oQls_Syun-iucaPFzz4mrI-9V4So0hF1UhAVbKWI', TIPOS_EVENTO[tipo].separador);
+          return (jsonObj.table.rows || [])
+            .map(row => row.c ? { data: parseDataPT(val(row.c[0])), descricao: String(val(row.c[2]) || '').trim(), tipo } : null)
+            .filter(ev => ev && ev.data);
+        } catch (e) {
+          console.error(`Falha ao carregar o separador "${TIPOS_EVENTO[tipo].separador}".`, e);
+          return [];
+        }
+      };
+      const listas = await Promise.all(Object.keys(TIPOS_EVENTO).map(ler));
+      eventosCal = listas.flat().sort((a, b) => a.data - b.data);
+      feriadosCarregados = true;
+      reRenderAll();
+    }
+
+    function mudarMesFeriados(delta) {
+      feriadosMes = delta === 0
+        ? (() => { const h = new Date(); return new Date(h.getFullYear(), h.getMonth(), 1); })()
+        : new Date(feriadosMes.getFullYear(), feriadosMes.getMonth() + delta, 1);
+      if (loggedUser && loggedUser.isRH) renderRHPanel(); else renderColabPanel();
+    }
+
+    function renderFeriadosHTML() {
+      const ano = feriadosMes.getFullYear(), mes = feriadosMes.getMonth();
+      const tituloMes = feriadosMes.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' });
+      const hojeStr = new Date().toDateString();
+      const porDia = {};
+      eventosCal.forEach(ev => { (porDia[ev.data.toDateString()] = porDia[ev.data.toDateString()] || []).push(ev); });
+
+      // Grelha de 2ª a domingo: começa na 2ª feira da semana do dia 1 e cobre semanas completas
+      const desvio = (new Date(ano, mes, 1).getDay() + 6) % 7;        // dias da semana anterior a mostrar
+      const inicio = new Date(ano, mes, 1 - desvio);
+      const nSemanas = Math.ceil((desvio + new Date(ano, mes + 1, 0).getDate()) / 7);
+
+      let celulas = '';
+      for (let i = 0; i < nSemanas * 7; i++) {
+        const d = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i);
+        const doMes = d.getMonth() === mes;
+        const fds = d.getDay() === 0 || d.getDay() === 6;
+        const hoje = d.toDateString() === hojeStr;
+        const lista = porDia[d.toDateString()] || [];
+        const temFeriado = doMes && lista.some(ev => ev.tipo === 'feriado');
+        celulas += `
+          <div class="min-h-[5.5rem] border-r border-b border-slate-200 p-1.5 ${temFeriado ? 'bg-red-50/60' : doMes ? (fds ? 'bg-slate-50' : 'bg-white') : 'bg-slate-100/60'}">
+            <div class="flex justify-end sm:justify-start">
+              <span class="text-[11px] font-bold w-6 h-6 inline-flex items-center justify-center rounded-full ${hoje ? 'bg-blue-600 text-white' : doMes ? 'text-slate-700' : 'text-slate-400'}">${d.getDate()}</span>
+            </div>
+            ${lista.map(ev => `<div title="${TIPOS_EVENTO[ev.tipo].nome}: ${escapeAttr(ev.descricao)}" class="mt-1 text-[10px] leading-tight font-bold px-1.5 py-1 rounded-md ${doMes ? TIPOS_EVENTO[ev.tipo].chip : TIPOS_EVENTO[ev.tipo].chipFora} truncate">${ev.descricao}</div>`).join('')}
+          </div>`;
+      }
+
+      const doMesAtual = eventosCal.filter(ev => ev.data.getFullYear() === ano && ev.data.getMonth() === mes);
+      const fmtDia = (d) => d.toLocaleDateString('pt-PT', { weekday: 'long', day: '2-digit', month: 'long' });
+      const contagem = Object.keys(TIPOS_EVENTO)
+        .map(t => `${eventosCal.filter(ev => ev.tipo === t).length} ${TIPOS_EVENTO[t].separador.toLowerCase()}`).join(' · ');
+      const legenda = Object.values(TIPOS_EVENTO)
+        .map(t => `<span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm ${t.ponto}"></span>${t.separador}</span>`).join('');
+
+      return `
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <button onclick="mudarMesFeriados(0)" class="text-xs font-bold border border-slate-300 bg-white hover:bg-slate-100 rounded-lg px-3 py-1.5">Hoje</button>
+              <button onclick="mudarMesFeriados(-1)" title="Mês anterior" class="text-sm font-bold border border-slate-300 bg-white hover:bg-slate-100 rounded-lg w-8 h-8">‹</button>
+              <button onclick="mudarMesFeriados(1)" title="Mês seguinte" class="text-sm font-bold border border-slate-300 bg-white hover:bg-slate-100 rounded-lg w-8 h-8">›</button>
+              <h3 class="font-bold text-slate-900 text-base capitalize ml-1">${tituloMes}</h3>
+            </div>
+            <div class="flex flex-wrap items-center gap-4 text-[11px] font-medium text-slate-500">
+              ${legenda}
+              <span>${feriadosCarregados ? contagem : 'A carregar…'}</span>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <div class="min-w-[36rem]">
+              <div class="grid grid-cols-7 bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                ${['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(n => `<div class="px-2 py-2 text-center border-r border-slate-200">${n}</div>`).join('')}
+              </div>
+              <div class="grid grid-cols-7 border-l border-slate-200">${celulas}</div>
+            </div>
+          </div>
+          <div class="p-4 border-t border-slate-200">
+            <h4 class="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Datas deste mês</h4>
+            ${doMesAtual.length === 0
+              ? `<p class="text-xs text-slate-400">Sem feriados nem convívios neste mês.</p>`
+              : `<ul class="space-y-1.5">${doMesAtual.map(ev => `
+                  <li class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    <span class="font-mono font-bold rounded px-2 py-0.5 ${TIPOS_EVENTO[ev.tipo].dia}">${String(ev.data.getDate()).padStart(2, '0')}</span>
+                    <span class="font-bold text-slate-800">${ev.descricao}</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wider ${TIPOS_EVENTO[ev.tipo].dia} rounded px-1.5 py-0.5">${TIPOS_EVENTO[ev.tipo].nome}</span>
+                    <span class="text-slate-400 capitalize">${fmtDia(ev.data)}</span>
+                  </li>`).join('')}</ul>`}
+          </div>
+        </div>
+      `;
+    }
+
     // Conta os dias úteis (2ª a 6ª feira, excluindo os dias de paragem da empresa) entre duas datas, inclusive
     function diasUteisPortugal(inicio, fim) {
       let total = 0;
@@ -2207,9 +2316,10 @@
           <button onclick="setRhView('picagens')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'picagens' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">⏰ Picagens</button>
           <button onclick="setRhView('ausencias')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'ausencias' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">🗓️ Pedidos de ausência (${faltas.length})</button>
           <button onclick="setRhView('calendario')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'calendario' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">📅 Calendário de ausências (${calendario.length})</button>
+          <button onclick="setRhView('feriados')" class="flex-1 px-4 py-2 rounded-lg text-xs font-black transition-all ${rhView === 'feriados' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}">🎉 Calendário Somengil</button>
         </div>
 
-        ${rhView === 'ausencias' ? faltasHTML : rhView === 'calendario' ? calHTML : rhView === 'picagens' ? picHTML : `
+        ${rhView === 'feriados' ? renderFeriadosHTML() : rhView === 'ausencias' ? faltasHTML : rhView === 'calendario' ? calHTML : rhView === 'picagens' ? picHTML : `
         <div class="bg-white p-4 border border-slate-200 rounded-xl shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
           <input 
             id="rh-search"
@@ -2309,6 +2419,8 @@
 
       if (activeTab === "ausencias") {
         innerContent = renderAusenciasColabHTML();
+      } else if (activeTab === "feriados") {
+        innerContent = renderFeriadosHTML();
       } else if (activeTab === "dashboard") {
         innerContent = `
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2596,6 +2708,12 @@
             >
               🗓️ Ausências
             </button>
+            <button
+              onclick="setTab('feriados')"
+              class="px-5 py-2.5 rounded-xl text-xs font-black border transition-all ${activeTab === 'feriados' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'}"
+            >
+              🎉 Calendário Somengil
+            </button>
           </div>
         </div>
 
@@ -2669,6 +2787,7 @@
       ligarHorasSheets();   // se a folha responder, substitui o exemplo pelos dados reais
       ligarParagens();      // carrega o separador "Paragens" (dias de fecho/feriados da empresa)
       ligarFaltas();        // carrega o separador "Faltas" (pedidos de ausência)
+      ligarFeriados();      // carrega os separadores "Feriados" e "Convívios" (Calendário Somengil)
     });
   </script>
 
