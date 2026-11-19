@@ -1127,30 +1127,47 @@
       }
     }
 
-    // --- CALENDÁRIO SOMENGIL: separadores "Feriados" e "Convívios" da folha do calendário, numa vista mensal ---
+    // --- CALENDÁRIO SOMENGIL: vista mensal ---
+    //  - separador "Paragens" da folha das horas: feriados + dias de fecho da empresa
+    //  - separador "Convívios" da folha do calendário
+    //  Em qualquer separador, uma linha cuja Descrição começa por "Fecho" conta como fecho da empresa.
+    //  Linhas repetidas (mesma data e descrição, p.ex. o fecho copiado nos dois separadores) aparecem uma só vez.
     const TIPOS_EVENTO = {
-      feriado:  { separador: 'Feriados',  nome: 'Feriado',  chip: 'bg-red-600 text-white',     chipFora: 'bg-red-200 text-red-800',         dia: 'bg-red-50 text-red-700',         ponto: 'bg-red-600' },
-      convivio: { separador: 'Convívios', nome: 'Convívio', chip: 'bg-emerald-600 text-white', chipFora: 'bg-emerald-200 text-emerald-800', dia: 'bg-emerald-50 text-emerald-700', ponto: 'bg-emerald-600' }
+      feriado:  { legenda: 'Feriados',          nome: 'Feriado',  chip: 'bg-red-600 text-white',     chipFora: 'bg-red-200 text-red-800',         dia: 'bg-red-50 text-red-700',         ponto: 'bg-red-600' },
+      fecho:    { legenda: 'Fecho da empresa',  nome: 'Fecho',    chip: 'bg-amber-500 text-white',   chipFora: 'bg-amber-200 text-amber-800',     dia: 'bg-amber-50 text-amber-700',     ponto: 'bg-amber-500' },
+      convivio: { legenda: 'Convívios',         nome: 'Convívio', chip: 'bg-emerald-600 text-white', chipFora: 'bg-emerald-200 text-emerald-800', dia: 'bg-emerald-50 text-emerald-700', ponto: 'bg-emerald-600' }
     };
-    let eventosCal = [];          // [{ data: Date, descricao, tipo: 'feriado' | 'convivio' }]
+    const ehFecho = (desc) => /^fecho/.test(normNome(desc));
+    const FONTES_CALENDARIO = [
+      { folha: '1zGnYN2fSKZWvtjwho-n5OKWyOvaV1jJ_S7e3CTaonds', separador: 'Paragens',  tipo: (desc) => ehFecho(desc) ? 'fecho' : 'feriado' },
+      { folha: '1H5_oQls_Syun-iucaPFzz4mrI-9V4So0hF1UhAVbKWI', separador: 'Convívios', tipo: (desc) => ehFecho(desc) ? 'fecho' : 'convivio' }
+    ];
+    let eventosCal = [];          // [{ data: Date, descricao, tipo: 'feriado' | 'fecho' | 'convivio' }]
     let feriadosCarregados = false;
     let feriadosMes = (() => { const h = new Date(); return new Date(h.getFullYear(), h.getMonth(), 1); })();
 
     async function ligarFeriados() {
       const val = (cell) => cell ? (cell.f !== null && cell.f !== undefined ? cell.f : cell.v) : '';
-      const ler = async (tipo) => {
+      const ler = async (fonte) => {
         try {
-          const jsonObj = await gvizJsonp('1H5_oQls_Syun-iucaPFzz4mrI-9V4So0hF1UhAVbKWI', TIPOS_EVENTO[tipo].separador);
+          const jsonObj = await gvizJsonp(fonte.folha, fonte.separador);
           return (jsonObj.table.rows || [])
-            .map(row => row.c ? { data: parseDataPT(val(row.c[0])), descricao: String(val(row.c[2]) || '').trim(), tipo } : null)
+            .map(row => {
+              if (!row.c) return null;
+              const descricao = String(val(row.c[2]) || '').trim();
+              return { data: parseDataPT(val(row.c[0])), descricao, tipo: fonte.tipo(descricao) };
+            })
             .filter(ev => ev && ev.data);
         } catch (e) {
-          console.error(`Falha ao carregar o separador "${TIPOS_EVENTO[tipo].separador}".`, e);
+          console.error(`Falha ao carregar o separador "${fonte.separador}".`, e);
           return [];
         }
       };
-      const listas = await Promise.all(Object.keys(TIPOS_EVENTO).map(ler));
-      eventosCal = listas.flat().sort((a, b) => a.data - b.data);
+      const listas = await Promise.all(FONTES_CALENDARIO.map(ler));
+      const vistos = new Set();
+      eventosCal = listas.flat()
+        .filter(ev => { const k = ev.data.toDateString() + '|' + normNome(ev.descricao); if (vistos.has(k)) return false; vistos.add(k); return true; })
+        .sort((a, b) => a.data - b.data);
       feriadosCarregados = true;
       reRenderAll();
     }
@@ -1182,8 +1199,9 @@
         const hoje = d.toDateString() === hojeStr;
         const lista = porDia[d.toDateString()] || [];
         const temFeriado = doMes && lista.some(ev => ev.tipo === 'feriado');
+        const temFecho = doMes && lista.some(ev => ev.tipo === 'fecho');
         celulas += `
-          <div class="min-h-[5.5rem] border-r border-b border-slate-200 p-1.5 ${temFeriado ? 'bg-red-50/60' : doMes ? (fds ? 'bg-slate-50' : 'bg-white') : 'bg-slate-100/60'}">
+          <div class="min-h-[5.5rem] border-r border-b border-slate-200 p-1.5 ${temFeriado ? 'bg-red-50/60' : temFecho ? 'bg-amber-50/70' : doMes ? (fds ? 'bg-slate-50' : 'bg-white') : 'bg-slate-100/60'}">
             <div class="flex justify-end sm:justify-start">
               <span class="text-[11px] font-bold w-6 h-6 inline-flex items-center justify-center rounded-full ${hoje ? 'bg-blue-600 text-white' : doMes ? 'text-slate-700' : 'text-slate-400'}">${d.getDate()}</span>
             </div>
@@ -1193,10 +1211,12 @@
 
       const doMesAtual = eventosCal.filter(ev => ev.data.getFullYear() === ano && ev.data.getMonth() === mes);
       const fmtDia = (d) => d.toLocaleDateString('pt-PT', { weekday: 'long', day: '2-digit', month: 'long' });
-      const contagem = Object.keys(TIPOS_EVENTO)
-        .map(t => `${eventosCal.filter(ev => ev.tipo === t).length} ${TIPOS_EVENTO[t].separador.toLowerCase()}`).join(' · ');
+      // Contagem do ano visível (os dias de fecho contam-se um a um)
+      const doAno = eventosCal.filter(ev => ev.data.getFullYear() === ano);
+      const contagem = `${ano}: ` + Object.keys(TIPOS_EVENTO)
+        .map(t => `${doAno.filter(ev => ev.tipo === t).length} ${t === 'fecho' ? 'dias de fecho' : TIPOS_EVENTO[t].legenda.toLowerCase()}`).join(' · ');
       const legenda = Object.values(TIPOS_EVENTO)
-        .map(t => `<span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm ${t.ponto}"></span>${t.separador}</span>`).join('');
+        .map(t => `<span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm ${t.ponto}"></span>${t.legenda}</span>`).join('');
 
       return `
         <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
@@ -1223,7 +1243,7 @@
           <div class="p-4 border-t border-slate-200">
             <h4 class="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Datas deste mês</h4>
             ${doMesAtual.length === 0
-              ? `<p class="text-xs text-slate-400">Sem feriados nem convívios neste mês.</p>`
+              ? `<p class="text-xs text-slate-400">Sem feriados, fechos nem convívios neste mês.</p>`
               : `<ul class="space-y-1.5">${doMesAtual.map(ev => `
                   <li class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                     <span class="font-mono font-bold rounded px-2 py-0.5 ${TIPOS_EVENTO[ev.tipo].dia}">${String(ev.data.getDate()).padStart(2, '0')}</span>
@@ -3125,7 +3145,7 @@
       ligarHorasSheets();   // se a folha responder, substitui o exemplo pelos dados reais
       ligarParagens();      // carrega o separador "Paragens" (dias de fecho/feriados da empresa)
       ligarFaltas();        // carrega o separador "Faltas" (pedidos de ausência)
-      ligarFeriados();      // carrega os separadores "Feriados" e "Convívios" (Calendário Somengil)
+      ligarFeriados();      // Calendário Somengil: "Paragens" (feriados + fecho) e "Convívios"
       ligarMensagens();     // carrega o separador "Mensagens"
       // Volta a ler as mensagens a cada minuto enquanto alguém tem a sessão aberta
       setInterval(() => { if (loggedUser && !loggedUser.isBackoffice && !document.hidden) ligarMensagens(); }, 60000);
