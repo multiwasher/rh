@@ -329,7 +329,8 @@ function tratarFaltas(dados) {
       ]);
       var nova = sh.getLastRow();
       var r = sincronizarDesconto(sh, nova);   // por norma nasce Pendente: não desconta
-      return { ok: true, acao: dados.acao, linha: nova, saldo: r };
+      var disp = recalcularDisponiveis(sh, dados.quem);
+      return { ok: true, acao: dados.acao, linha: nova, saldo: r, disponiveis: disp };
     }
 
     var num = Number(dados.linha);
@@ -351,14 +352,17 @@ function tratarFaltas(dados) {
       var coluna = (dados.campo === 'Motivo') ? 6 : 5;          // F = Motivo | E = Status
       sh.getRange(num, coluna).setValue(dados.valor);
       var res = sincronizarDesconto(sh, num);                   // desconta ou devolve, se for o caso
-      return { ok: true, acao: dados.acao, linha: num, campo: dados.campo, valor: dados.valor, saldo: res };
+      var disp2 = recalcularDisponiveis(sh, sh.getRange(num, 1).getValue());
+      return { ok: true, acao: dados.acao, linha: num, campo: dados.campo, valor: dados.valor, saldo: res, disponiveis: disp2 };
     }
 
     // ---------- eliminar / anular pedido ----------
     if (dados.acao === 'falta_eliminar') {
+      var quemEl = sh.getRange(num, 1).getValue();
       var devolvido = devolverSeDescontado(sh, num);            // se estava aprovado, devolve os dias
       sh.deleteRow(num);
-      return { ok: true, acao: dados.acao, linhaEliminada: num, devolvido: devolvido };
+      var disp3 = recalcularDisponiveis(sh, quemEl);
+      return { ok: true, acao: dados.acao, linhaEliminada: num, devolvido: devolvido, disponiveis: disp3 };
     }
 
     return { ok: false, erro: "Ação desconhecida: " + dados.acao };
@@ -397,8 +401,49 @@ function sincronizarDesconto(sh, num) {
   }
 
   sh.getRange(num, COL_FALTAS_DESCONTADO).setValue(deveDescontar ? 'Sim' : '');
-  sh.getRange(num, COL_FALTAS_DISP).setValue(novoSaldo);
   return { descontado: deveDescontar, dias: dias, novoSaldo: novoSaldo };
+}
+
+
+/**
+ * Coluna H ("Dias Disponíveis") = o mesmo valor que o portal mostra:
+ *   coluna D da "Equipa" (já sem os aprovados) MENOS os pedidos pendentes
+ *   (em dias, com motivo que desconta férias).
+ * Escreve esse valor em TODAS as linhas do colaborador, para ficarem iguais à app.
+ */
+function recalcularDisponiveis(sh, nome) {
+  var base = lerDiasEquipa(nome);
+  if (base === null) return null;
+  var ultima = sh.getLastRow();
+  if (ultima < 2) return base;
+  var l = sh.getRange(2, 1, ultima - 1, 9).getValues();     // A:I
+  var alvo = normalizar(nome), pendentes = 0, linhas = [];
+  for (var i = 0; i < l.length; i++) {
+    if (normalizar(l[i][0]) !== alvo) continue;
+    linhas.push(i + 2);
+    var st = normalizar(l[i][4]);
+    if (st === 'aprovado' || st === 'nao aprovado') continue;
+    if (normalizar(l[i][8]) === 'horas' || !descontaFerias(l[i][5])) continue;
+    pendentes += Number(l[i][6]) || 0;
+  }
+  var disp = Math.round((base - pendentes) * 100) / 100;
+  linhas.forEach(function (n) { sh.getRange(n, COL_FALTAS_DISP).setValue(disp); });
+  return disp;
+}
+
+
+/**
+ * Correr UMA VEZ no editor (▶) para corrigir a coluna H dos pedidos que já existem.
+ */
+function recalcularDisponiveisTodos() {
+  var sh = SpreadsheetApp.openById(ID_FOLHA).getSheetByName(NOME_ABA_FALTAS);
+  var ultima = sh.getLastRow();
+  if (ultima < 2) return;
+  var nomes = {}, col = sh.getRange(2, 1, ultima - 1, 1).getValues();
+  col.forEach(function (r) { if (String(r[0]).trim()) nomes[normalizar(r[0])] = r[0]; });
+  Object.keys(nomes).forEach(function (k) {
+    Logger.log(nomes[k] + ' -> ' + recalcularDisponiveis(sh, nomes[k]));
+  });
 }
 
 

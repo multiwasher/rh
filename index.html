@@ -272,7 +272,8 @@
         }
         window[cb] = (resp) => { limpar(); resolve(resp); };
         script.onerror = () => { limpar(); reject(new Error("Falha ao carregar a folha (verifica a partilha pública).")); };
-        script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json;responseHandler:${cb}&sheet=${encodeURIComponent(sheetName)}`;
+        // "_=" único em cada pedido: evita que o Google devolva uma cópia em cache (ex.: linhas apagadas à mão)
+        script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json;responseHandler:${cb}&sheet=${encodeURIComponent(sheetName)}&_=${Date.now()}`;
         document.head.appendChild(script);
       });
     }
