@@ -2384,7 +2384,8 @@
     function abrirNovaPicagem() {
       novaPic = {
         id: novoIdPicagem(),
-        colaborador: '',
+        // Colaborador: o RH escolhe; os restantes registam sempre em nome próprio
+        colaborador: (loggedUser && !loggedUser.isRH) ? loggedUser.nome : '',
         dia: hojeISO(),
         horario: PIC_HORARIOS[0],
         h: { extra: 0, falta: 0, fds: 0 },
@@ -2450,10 +2451,12 @@
             </div>
             <div>
               <label for="np-colab" class="block text-xs text-slate-600 mb-1">Colaborador<span class="text-red-500">*</span></label>
-              <select id="np-colab" onchange="setNovaPic('colaborador', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 bg-white">
+              ${(loggedUser && !loggedUser.isRH)
+                ? `<input id="np-colab" type="text" value="${escapeAttr(s.colaborador)}" readonly class="w-full border border-slate-200 bg-slate-50 text-slate-700 font-medium rounded-lg px-3 py-2.5" />`
+                : `<select id="np-colab" onchange="setNovaPic('colaborador', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 bg-white">
                 <option value="" ${s.colaborador ? '' : 'selected'}></option>
                 ${opcoesColab}
-              </select>
+              </select>`}
             </div>
             <div>
               <label for="np-dia" class="block text-xs text-slate-600 mb-1">Dia Picagem (hoje)</label>
@@ -2479,6 +2482,7 @@
     function guardarNovaPicagem() {
       const s = novaPic;
       if (!s || s.aGravar) return;
+      if (loggedUser && !loggedUser.isRH) s.colaborador = loggedUser.nome; // nunca em nome de outro
       if (!s.colaborador) { triggerToast("Escolha um colaborador."); return; }
       if (!s.dia) { triggerToast("Indique o dia da picagem."); return; }
       if (!s.horario) { triggerToast("Escolha o horário de trabalho."); return; }
@@ -3195,7 +3199,7 @@
           <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden text-xs">
             <div class="p-4 border-b border-slate-150 flex justify-between items-center bg-slate-50">
               <h4 class="font-bold text-slate-900">O meu registo diário de picagens</h4>
-              <span class="text-[10px] uppercase font-bold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full">Consulta</span>
+              <button onclick="abrirNovaPicagem()" title="Adicionar picagem" aria-label="Adicionar picagem" class="text-base leading-none font-black text-white bg-blue-600 hover:bg-blue-700 rounded-lg w-8 h-8 inline-flex items-center justify-center shrink-0 shadow-sm">+</button>
             </div>
 
             <div class="overflow-x-auto">
