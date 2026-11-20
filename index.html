@@ -1837,11 +1837,15 @@
       if (!c.nome || normNome(c.nome) === "colaborador") return;
       const chave = normNome(c.nome);
 
-      const bancoMin = hhmmParaMinutos(c.banco);        // Banco de Horas (extra dias de semana)
-      const faltaMin = hhmmParaMinutos(c.falta);        // Tempo em Falta
-      const extraFdsMin = hhmmParaMinutos(c.extraFds);  // Tempo Extra (fim de semana)
+      // "Instalação Técnica": todo o tempo é pago, por isso não conta para horas extra
+      const instalacaoTecnica = normNome(c.horario).startsWith("instalacao tecnica");
+
+      const bancoMin = instalacaoTecnica ? 0 : hhmmParaMinutos(c.banco);        // Banco de Horas (extra dias de semana)
+      const faltaMin = instalacaoTecnica ? 0 : hhmmParaMinutos(c.falta);        // Tempo em Falta
+      const extraFdsMin = instalacaoTecnica ? 0 : hhmmParaMinutos(c.extraFds);  // Tempo Extra (fim de semana)
       const trabMin = hhmmParaMinutos(c.trabalhado);    // Tempo Trabalhado (coluna da folha)
-      const saldoMin = hhmmParaMinutos(c.saldo);        // SALDO da folha (já inclui fds e ajustes)
+      const saldoFolhaMin = hhmmParaMinutos(c.saldo);   // SALDO da folha (já inclui fds e ajustes)
+      const saldoMin = instalacaoTecnica ? 0 : saldoFolhaMin; // Instalação Técnica não conta para o saldo (nem a favor, nem em dívida)
       const incompleto = normNome(c.horarioIncompleto) === "incompleto"; // coluna "Horário Incompleto"
 
       if (!resumo[chave]) resumo[chave] = { bancoMin: 0, faltaMin: 0, extraFdsMin: 0, saldoMin: 0, dias: 0, vezesExtra: 0, vezesFds: 0, diasFalta: 0 };
