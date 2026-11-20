@@ -25,6 +25,9 @@
     <span id="toast-message" class="font-bold text-xs">Operação realizada com sucesso!</span>
   </div>
 
+  <!-- MODAL: NOVA PICAGEM (preenchido por renderNovaPicagemModal) -->
+  <div id="nova-picagem-modal" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-start justify-center overflow-y-auto p-4" onclick="if (event.target === this) fecharNovaPicagem()"></div>
+
   <!-- HEADER PRINCIPAL -->
   <header class="bg-white text-slate-800 shadow-sm border-b border-slate-200 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -2328,6 +2331,223 @@
       .catch(() => triggerToast(`Falha ao contactar o Google Sheets — o registo de ${nome} (${dia}) pode não ter sido eliminado na folha. Verifique e tente novamente.`));
     }
 
+    // ===================================================================
+    // NOVA PICAGEM — adiciona uma linha ao separador "Dados" (A:AA)
+    // F, J, N e O são só títulos de secção (ficam vazios, como nas linhas existentes);
+    // as horas vão para G:I, K:M e P:R; S:AA são os totais calculados.
+    // ===================================================================
+    const PIC_HORARIOS = ["Horário Normal (semana)", "Horário Normal + Horas Extra (semana)", "Horas Extra (fim de semana)", "Instalação Técnica"];
+    const PIC_STANDARD_MIN = 8 * 60 + 15; // "Horas Trabalho Standard" = 8:15:00
+    const PIC_OPC_HORAS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    const PIC_OPC_MIN = [0, 15, 30, 45, 50, 55];
+    const PIC_SECCOES = [
+      { k: 'extra', titulo: 'Tempo Realizado Extra (durante horário trabalho)', icone: '🏅', cor: 'text-slate-900', lblH: 'Horas extra', lblM: 'Minutos extra' },
+      { k: 'falta', titulo: 'Horas em Falta', icone: '❌', cor: 'text-slate-900', lblH: 'Horas', lblM: 'Minutos' },
+      { k: 'fds',   titulo: 'Tempo Realizado Extra (sáb./dom.)', icone: '🎖️', cor: 'text-emerald-700', lblH: 'Horas extra', lblM: 'Minutos extra' }
+    ];
+    let novaPic = null; // estado do formulário enquanto o modal está aberto
+
+    function novoIdPicagem() {
+      const b = new Uint8Array(4);
+      (window.crypto || window.msCrypto).getRandomValues(b);
+      return Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+    }
+    function hojeISO() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    const dois = n => String(n).padStart(2, '0');
+    // minutos -> "HH:MM:SS" (com zero à esquerda) ou "H:MM:SS" (sem), com sinal se negativo
+    function minParaHMS(min, zeroEsq) {
+      const s = min < 0 ? '-' : '', a = Math.abs(min);
+      const h = Math.floor(a / 60);
+      return `${s}${zeroEsq ? dois(h) : h}:${dois(a % 60)}:00`;
+    }
+
+    // Os mesmos cálculos que as linhas existentes da folha apresentam (S:AA)
+    function calcularTotaisPicagem(horario, extraMin, faltaMin, fdsMin) {
+      const semTrabalhado = horario === "Horas Extra (fim de semana)" || horario === "Instalação Técnica";
+      const trabalhado = semTrabalhado ? null : PIC_STANDARD_MIN + extraMin - faltaMin;
+      const saldoHoras = extraMin - faltaMin;      // X
+      const saldo = saldoHoras + fdsMin;           // AA = X + U (+ ajustes, vazios aqui)
+      return {
+        banco: minParaHMS(extraMin, true),                                   // S
+        falta: minParaHMS(faltaMin, true),                                   // T
+        extraFds: minParaHMS(fdsMin, true),                                  // U
+        incompleto: (trabalhado !== null && faltaMin > extraMin) ? 'Incompleto' : '--', // V
+        trabalhado: trabalhado === null ? '' : minParaHMS(trabalhado, false), // W
+        saldoHoras: minParaHMS(saldoHoras, false),                           // X
+        saldo: minParaHMS(saldo, true)                                       // AA
+      };
+    }
+
+    function abrirNovaPicagem() {
+      novaPic = {
+        id: novoIdPicagem(),
+        colaborador: '',
+        dia: hojeISO(),
+        horario: PIC_HORARIOS[0],
+        h: { extra: 0, falta: 0, fds: 0 },
+        m: { extra: 0, falta: 0, fds: 0 },
+        aGravar: false
+      };
+      renderNovaPicagemModal();
+      document.getElementById('nova-picagem-modal').classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+    function fecharNovaPicagem() {
+      novaPic = null;
+      const el = document.getElementById('nova-picagem-modal');
+      el.classList.add('hidden');
+      el.innerHTML = '';
+      document.body.style.overflow = '';
+    }
+    function setNovaPic(campo, valor) { if (novaPic) { novaPic[campo] = valor; renderNovaPicagemModal(); } }
+    // Secções de horas que cada horário mostra (as outras ficam escondidas e gravam 00)
+    const PIC_SECCOES_POR_HORARIO = {
+      "Horário Normal (semana)": ['falta'],
+      "Horário Normal + Horas Extra (semana)": ['extra'],
+      "Horas Extra (fim de semana)": ['fds'],
+      "Instalação Técnica": ['fds']   // grava como o fim de semana (P:R), mas com o título "Tempo Extra"
+    };
+    const seccaoVisivel = (horario, k) => (PIC_SECCOES_POR_HORARIO[horario] || []).includes(k);
+    const tituloSeccaoPic = (horario, sec) => (horario === "Instalação Técnica" && sec.k === 'fds') ? 'Tempo Extra' : sec.titulo;
+    function setHorarioPic(i) { if (novaPic) { novaPic.horario = PIC_HORARIOS[i]; renderNovaPicagemModal(); } }
+    function setTempoPic(k, tipo, v) { if (novaPic) { novaPic[tipo][k] = v; renderNovaPicagemModal(); } }
+
+    function renderNovaPicagemModal() {
+      const el = document.getElementById('nova-picagem-modal');
+      if (!el || !novaPic) return;
+      const s = novaPic;
+      const chip = (ativo, txt, onclick, extra = '') =>
+        `<button type="button" onclick="${onclick}" class="${extra} py-2.5 rounded-md text-sm font-medium border transition-colors ${ativo ? 'bg-blue-500 border-blue-500 text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}">${txt}</button>`;
+
+      const opcoesColab = [...colaboradores].filter(c => c.nome).sort((a, b) => a.nome.localeCompare(b.nome))
+        .map(c => `<option value="${escapeAttr(c.nome)}" ${c.nome === s.colaborador ? 'selected' : ''}>${escapeAttr(c.nome)}</option>`).join('');
+
+      const seccoes = PIC_SECCOES.filter(sec => seccaoVisivel(s.horario, sec.k)).map(sec => `
+          <div>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-base">${sec.icone}</span>
+              <span class="font-medium ${sec.cor}">${tituloSeccaoPic(s.horario, sec)}</span>
+            </div>
+            <span class="block text-[11px] text-slate-500 mb-1">${sec.lblH}</span>
+            <div class="grid grid-cols-9 gap-1.5">${PIC_OPC_HORAS.map(v => chip(s.h[sec.k] === v, dois(v), `setTempoPic('${sec.k}','h',${v})`)).join('')}</div>
+            <span class="block text-[11px] text-slate-500 mt-3 mb-1">${sec.lblM}</span>
+            <div class="grid grid-cols-6 gap-1.5">${PIC_OPC_MIN.map(v => chip(s.m[sec.k] === v, dois(v), `setTempoPic('${sec.k}','m',${v})`)).join('')}</div>
+          </div>`).join('');
+
+      el.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl my-6" role="dialog" aria-modal="true" aria-labelledby="np-titulo">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+            <h3 id="np-titulo" class="font-bold text-slate-900 flex items-center gap-2"><span>⏰</span> Nova picagem</h3>
+            <button type="button" onclick="fecharNovaPicagem()" aria-label="Fechar" class="text-slate-400 hover:text-slate-700 w-8 h-8 rounded-lg hover:bg-slate-100 font-bold">✕</button>
+          </div>
+          <div class="px-5 py-4 flex flex-col gap-4 text-sm">
+            <div>
+              <label class="block text-xs text-slate-600 mb-1">id<span class="text-red-500">*</span></label>
+              <input type="text" value="${s.id}" readonly class="w-full border border-slate-200 bg-slate-50 text-slate-400 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label for="np-colab" class="block text-xs text-slate-600 mb-1">Colaborador<span class="text-red-500">*</span></label>
+              <select id="np-colab" onchange="setNovaPic('colaborador', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 bg-white">
+                <option value="" ${s.colaborador ? '' : 'selected'}></option>
+                ${opcoesColab}
+              </select>
+            </div>
+            <div>
+              <label for="np-dia" class="block text-xs text-slate-600 mb-1">Dia Picagem (hoje)</label>
+              <input id="np-dia" type="date" value="${s.dia}" onchange="setNovaPic('dia', this.value)" class="w-full border border-slate-300 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-600 mb-1">Horas Trabalho Standard</label>
+              <input type="text" value="8:15:00" readonly class="w-full border border-slate-200 bg-slate-50 text-slate-400 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-600 mb-1">Horário de Trabalho<span class="text-red-500">*</span></label>
+              <div class="flex flex-col gap-1">${PIC_HORARIOS.map((h, i) => chip(s.horario === h, h, `setHorarioPic(${i})`, 'w-full')).join('')}</div>
+            </div>
+            ${seccoes}
+          </div>
+          <div class="flex justify-end gap-2 px-5 py-4 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
+            <button type="button" onclick="fecharNovaPicagem()" class="text-sm font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl px-4 py-2">Cancelar</button>
+            <button type="button" onclick="guardarNovaPicagem()" ${s.aGravar ? 'disabled' : ''} class="text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl px-5 py-2 shadow-sm">${s.aGravar ? 'A gravar…' : 'Guardar picagem'}</button>
+          </div>
+        </div>`;
+    }
+
+    function guardarNovaPicagem() {
+      const s = novaPic;
+      if (!s || s.aGravar) return;
+      if (!s.colaborador) { triggerToast("Escolha um colaborador."); return; }
+      if (!s.dia) { triggerToast("Indique o dia da picagem."); return; }
+      if (!s.horario) { triggerToast("Escolha o horário de trabalho."); return; }
+      if (!APPS_SCRIPT_URL) { triggerToast("Endpoint de gravação não configurado — a picagem não foi gravada."); return; }
+
+      const [aa, mm, dd] = s.dia.split('-');
+      const diaPT = `${dd}/${mm}/${aa}`;
+      const vis = k => seccaoVisivel(s.horario, k);
+      const minDe = k => vis(k) ? s.h[k] * 60 + s.m[k] : 0;
+      const hDe = k => vis(k) ? s.h[k] : 0;
+      const mDe = k => vis(k) ? s.m[k] : 0;
+
+      // Nos horários de horas extra, o tempo extra é obrigatório
+      // (na Instalação Técnica pode ficar a 00; as horas em falta também)
+      if (s.horario !== "Instalação Técnica") {
+        for (const k of ['extra', 'fds']) {
+          const sec = PIC_SECCOES.find(x => x.k === k);
+          if (vis(k) && minDe(k) === 0) { triggerToast(`Indique as horas em "${sec.titulo}".`); return; }
+        }
+      }
+
+      // Aviso de registo duplicado (mesmo colaborador, mesmo dia)
+      const existentes = picagensPorColab[normNome(s.colaborador)] || [];
+      const dtNova = parseDataPT(diaPT);
+      const duplicado = existentes.some(p => { const d = parseDataPT(p.dia); return d && dtNova && d.toDateString() === dtNova.toDateString(); });
+      if (duplicado && !confirm(`${s.colaborador} já tem um registo em ${diaPT}. Deseja adicionar outro?`)) return;
+
+      const tot = calcularTotaisPicagem(s.horario, minDe('extra'), minDe('falta'), minDe('fds'));
+      const payload = {
+        acao: 'picagem_nova',
+        id: s.id,
+        colaborador: s.colaborador,
+        dia: diaPT,
+        horario: s.horario,
+        horas: dois(hDe('extra')), minutos: dois(mDe('extra')),
+        horasFalta: dois(hDe('falta')), minutosFalta: dois(mDe('falta')),
+        horasExtra: dois(hDe('fds')), minutosExtra: dois(mDe('fds')),
+        totais: tot
+      };
+
+      s.aGravar = true;
+      renderNovaPicagemModal();
+
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      })
+      .then(() => {
+        // Reflexo imediato no ecrã; a releitura da folha traz o nº de linha real (para poder eliminar)
+        processarLinhaHoras(horasResumo, picagensPorColab, {
+          nome: s.colaborador, dia: diaPT, horario: s.horario,
+          banco: tot.banco, falta: tot.falta, extraFds: tot.extraFds,
+          trabalhado: tot.trabalhado, saldo: tot.saldo, horarioIncompleto: tot.incompleto
+        });
+        fecharNovaPicagem();
+        reRenderAll();
+        triggerToast(`Picagem de ${payload.colaborador} (${diaPT}) enviada para a folha.`);
+        setTimeout(ligarHorasSheets, 3000);
+      })
+      .catch(() => {
+        if (novaPic) { novaPic.aGravar = false; renderNovaPicagemModal(); }
+        triggerToast("Falha ao contactar o Google Sheets — a picagem não foi gravada.");
+      });
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && novaPic) fecharNovaPicagem(); });
+
     function atualizarHoras() {
       triggerToast("A reler a folha…");
       ligarHorasSheets();
@@ -2614,6 +2834,7 @@
               <input id="pic-ate" type="date" value="${pAte}" onchange="updatePicFilters()" class="text-xs border border-slate-300 rounded-lg p-1" />
               ${(pDe || pAte) ? `<button onclick="limparDatasPic()" class="text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg px-2 py-1">✕ datas</button>` : ''}
               <button onclick="exportarPicagensXLSX()" class="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-3 py-1.5 shrink-0">⬇ Exportar</button>
+              <button onclick="abrirNovaPicagem()" title="Adicionar picagem" aria-label="Adicionar picagem" class="text-base leading-none font-black text-white bg-blue-600 hover:bg-blue-700 rounded-lg w-8 h-8 inline-flex items-center justify-center shrink-0 shadow-sm">+</button>
             </div>
           </div>
           <div class="overflow-x-auto max-h-[70vh] overflow-y-auto">

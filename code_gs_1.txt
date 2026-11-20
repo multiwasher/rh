@@ -50,21 +50,35 @@ function doGet(e) {
 
 
 function doPost(e) {
-  var dados = JSON.parse(e.postData.contents);
+  var dados = {}, resultado;
+  try {
+    dados = JSON.parse(e.postData.contents);
+    resultado = encaminhar(dados);
+  } catch (err) {
+    // Fica visível em Execuções > "Registos na nuvem"
+    console.error('doPost falhou | acao=' + (dados && dados.acao) + ' | ' + (err && err.stack ? err.stack : err));
+    resultado = { ok: false, erro: String(err && err.message ? err.message : err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(resultado))
+                       .setMimeType(ContentService.MimeType.JSON);
+}
 
+
+function encaminhar(dados) {
   var resultado;
   if (dados.acao && String(dados.acao).indexOf('falta_') === 0) {
     resultado = tratarFaltas(dados);              // pedidos de ausência
   } else if (dados.acao && String(dados.acao).indexOf('msg_') === 0) {
     resultado = tratarMensagens(dados);           // mensagens (separador "Mensagens")
+  } else if (dados.acao === 'picagem_nova') {
+    resultado = adicionarPicagem(dados);          // nova picagem (botão "+" em ⏰ Picagens)
   } else if (dados.acao === 'eliminar') {
     resultado = eliminarLinha(dados);             // eliminar picagem (como sempre)
   } else {
     resultado = escreverAjuste(dados);            // ajuste de horas (como sempre)
   }
-
-  return ContentService.createTextOutput(JSON.stringify(resultado))
-                       .setMimeType(ContentService.MimeType.JSON);
+  if (resultado && resultado.ok === false) console.warn('acao=' + dados.acao + ' | ' + JSON.stringify(resultado));
+  return resultado;
 }
 
 
@@ -142,6 +156,134 @@ function eliminarLinha(dados) {
     return { ok: true, linhaEliminada: numLinha };
   } finally {
     lock.releaseLock();
+  }
+}
+
+
+/* ============================================================
+ *  NOVO — NOVA PICAGEM (aba "Dados", colunas A:AA)
+ *
+ *  Escreve os campos do formulário (A:R). Para as colunas calculadas
+ *  (S:AA): se as linhas anteriores tiverem fórmulas, a fórmula é copiada
+ *  para a nova linha; se tiverem valores, escreve os valores calculados
+ *  no portal (mesmo formato das linhas existentes).
+ *  "Ajuste Horas (adicionar/retirar)" ficam vazias.
+ * ============================================================ */
+
+var PIC_HORARIOS = ["Horário Normal (semana)", "Horário Normal + Horas Extra (semana)",
+                    "Horas Extra (fim de semana)", "Instalação Técnica"];
+
+function adicionarPicagem(dados) {
+  if (!dados.colaborador || !dados.dia) return { ok: false, erro: "Faltam dados (Colaborador ou Dia)." };
+  if (PIC_HORARIOS.indexOf(dados.horario) < 0) return { ok: false, erro: "Horário inválido: " + dados.horario };
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = SpreadsheetApp.openById(ID_FOLHA).getSheetByName("Dados");
+    if (!sh) return { ok: false, erro: 'Não existe o separador "Dados".' };
+    var largura = sh.getLastColumn();
+    var cab = sh.getRange(1, 1, 1, largura).getValues()[0];
+    function col(nome) {
+      var alvo = normalizar(nome);
+      for (var i = 0; i < cab.length; i++) if (normalizar(cab[i]) === alvo) return i;
+      return -1;
+    }
+    // O apóstrofo guarda como TEXTO ("01", não 1): as fórmulas da folha juntam G&":"&H&":"&I
+    function dd(v) { var n = Math.max(0, Math.min(59, Number(v) || 0)); return "'" + ("0" + n).slice(-2); }
+    var t = dados.totais || {};
+
+    // Campos do formulário
+    var entrada = {};
+    entrada[col("id")]                         = "'" + (/^[0-9a-f]{8}$/i.test(String(dados.id || "")) ? String(dados.id) : Utilities.getUuid().slice(0, 8));
+    entrada[col("Colaborador")]                = String(dados.colaborador);
+    entrada[col("Dia Picagem (hoje)")]         = String(dados.dia);
+    entrada[col("Horas Trabalho Standard")]    = "08:15:00";
+    entrada[col("Horário de Trabalho")]        = dados.horario;
+    entrada[col("Horas")]                      = dd(dados.horas);
+    entrada[col("Minutos")]                    = dd(dados.minutos);
+    entrada[col("Segundos")]                   = "'00";
+    entrada[col("Horas Falta")]                = dd(dados.horasFalta);
+    entrada[col("Minutos Falta")]              = dd(dados.minutosFalta);
+    entrada[col("Segundo Falta")]              = "'00";
+    entrada[col("Horas Extra")]                = dd(dados.horasExtra);
+    entrada[col("Minutos Extra")]              = dd(dados.minutosExtra);
+    entrada[col("Segundos Extra")]             = "'00";
+
+    // Colunas calculadas (só usadas se a folha não tiver fórmulas nessas colunas)
+    var calculado = {};
+    calculado[col("Banco de Horas")]     = t.banco || "00:00:00";
+    calculado[col("Tempo em Falta")]     = t.falta || "00:00:00";
+    calculado[col("Tempo Extra (fds)")]  = t.extraFds || "00:00:00";
+    calculado[col("Horário Incompleto")] = t.incompleto || "--";
+    calculado[col("Tempo Trabalhado")]   = t.trabalhado || "";
+    calculado[col("Saldo Horas")]        = t.saldoHoras || "0:00:00";
+    calculado[col("SALDO")]              = t.saldo || "00:00:00";
+
+    // Última linha com Colaborador preenchido (getLastRow() conta linhas "vazias" com
+    // fórmulas/formatação, o que deixaria buracos e trocaria os nºs de linha no portal)
+    var ultima = 1;
+    var iCol = col("Colaborador");
+    if (sh.getLastRow() >= 2 && iCol >= 0) {
+      var nomes = sh.getRange(1, iCol + 1, sh.getLastRow(), 1).getValues();
+      for (var k = nomes.length - 1; k >= 1; k--) if (String(nomes[k][0]).trim() !== "") { ultima = k + 1; break; }
+    }
+
+    // Procura, nas últimas linhas, a fórmula (R1C1) mais recente de cada coluna
+    var formulas = {};
+    var linhaModelo = ultima >= 2 ? ultima : 0;
+    if (ultima >= 2) {
+      var ini = Math.max(2, ultima - 60);
+      var bloco = sh.getRange(ini, 1, ultima - ini + 1, largura).getFormulasR1C1();
+      for (var c = 0; c < largura; c++) {
+        for (var r = bloco.length - 1; r >= 0; r--) {
+          if (bloco[r][c]) { formulas[c] = bloco[r][c]; break; }
+        }
+      }
+    }
+
+    var nova = ultima + 1;
+    // A folha pode não ter linhas vazias no fim: getRange() fora dos limites dá erro
+    // (o appendRow cria a linha sozinho; aqui temos de a criar nós)
+    if (nova > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), nova - sh.getMaxRows());
+    // Mantém a formatação das linhas existentes (ex.: "00" como texto)
+    if (linhaModelo) sh.getRange(linhaModelo, 1, 1, largura).copyTo(sh.getRange(nova, 1, 1, largura), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+
+    var valores = [], comFormula = [];
+    for (var j = 0; j < largura; j++) {
+      if (entrada.hasOwnProperty(j)) valores.push(entrada[j]);   // campos do formulário mandam sempre
+      else if (formulas[j]) { valores.push(""); comFormula.push(j); }
+      else if (calculado.hasOwnProperty(j) && j >= 0) valores.push(calculado[j]);
+      else valores.push("");
+    }
+    sh.getRange(nova, 1, 1, largura).setValues([valores]);
+    comFormula.forEach(function (j) { sh.getRange(nova, j + 1).setFormulaR1C1(formulas[j]); });
+
+    return { ok: true, acao: dados.acao, linha: nova, id: String(valores[col("id")]).replace(/^'/, ""), colunasComFormula: comFormula.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+/**
+ * Teste rápido (correr no editor com ▶): cria uma picagem de teste na aba "Dados",
+ * mostra o resultado no registo e apaga-a logo a seguir.
+ * Se falhar, o erro aparece no "Registo de execução".
+ */
+function testarPicagem() {
+  var r = adicionarPicagem({
+    acao: 'picagem_nova', id: 'teste000', colaborador: 'TESTE — apagar', dia: '20/11/2026',
+    horario: 'Horário Normal + Horas Extra (semana)', horas: '01', minutos: '30',
+    horasFalta: '00', minutosFalta: '00', horasExtra: '00', minutosExtra: '00',
+    totais: { banco: '01:30:00', falta: '00:00:00', extraFds: '00:00:00', incompleto: '--',
+              trabalhado: '9:45:00', saldoHoras: '1:30:00', saldo: '01:30:00' }
+  });
+  Logger.log('Criado: ' + JSON.stringify(r));
+  if (r.ok) {
+    var sh = SpreadsheetApp.openById(ID_FOLHA).getSheetByName("Dados");
+    Logger.log('Linha escrita: ' + JSON.stringify(sh.getRange(r.linha, 1, 1, sh.getLastColumn()).getDisplayValues()[0]));
+    Logger.log('Eliminar: ' + JSON.stringify(eliminarLinha({ linha: r.linha, colaborador: 'TESTE — apagar' })));
   }
 }
 
